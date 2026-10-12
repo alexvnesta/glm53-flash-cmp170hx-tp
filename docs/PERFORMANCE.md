@@ -91,3 +91,26 @@ layout prefills at ~1.26-1.32K.
   with or without images. Outputs stay coherent.
 - The 3.05 bpw quant's quality figures are turboderp's/Flun's *(reported)*: ~93 % top-1 agreement and KLD ~0.05 vs BF16
   for the 3.0 bpw build. We have not run our own fidelity evaluation.
+
+## 5. NCCL vs native tensor-parallel backend (2026-10-12)
+
+Same build (vision and hybrid drafting on), same machine, consecutive arms on a test port. Native = ExLlamaV3's default TP backend
+(all-reduce through pinned host memory with a CPU helper). NCCL = `-tpb nccl`, NCCL 2.30.7, bootstrap on loopback.
+
+**Content check first** (our `scripts/p2p_check.py`; idea from Morrowmake's recipe): 74 random-byte peer copies (both directions,
+128 KiB ±1 to 32 MiB) with 0 mismatches; 84 NCCL all_reduce cases (fp32 and bf16) bit-exact against a CPU sum; NCCL chose the
+**P2P/CUMEM** transport.
+
+| metric | native | NCCL | change |
+|---|---|---|---|
+| decode, counting (serial n=10) | 119.1 tok/s | 124.3 | +4.35 % (Welch p=3e-9) |
+| decode, hard free text (serial n=10) | 42.75 | 45.52 | +6.48 % (p=2e-9) |
+| prefill 8K / 32K (cold, n=2 each) | 1,360 / 1,385 tok/s | 1,477 / 1,545 | +8.6 % / +11.5 % (pooled +10.05 %, p=1.5e-4) |
+| structured / code / prose prompts (temp 0, 400 tokens, thinking low; n=5) | 89.0 / 101.5 / 43.1 | 94.3 / 105.5 / 46.5 | +6.0 / +3.9 / +7.9 % |
+| GPU0 headroom at an image-heavy stress peak | 1,037 MiB | 1,099 MiB | no extra memory |
+
+Sanity answers and the identical-pair concurrency test passed on both arms; temperature-0 output hashes differ between backends
+(different reduction order), as expected. These prompt numbers use the lowest reasoning effort; the server cannot switch thinking off,
+so they are not directly comparable with "thinking off" benchmarks.
+
+After switching production to NCCL, a 30-minute mixed soak (two workers: shared-prefix sessions with ground-truth answers, chats, counting, cancels, tool calls) passed: 945 requests, 0 failures besides 3 known wrong retrieval answers (97.4 % retrieval accuracy), a clean log (no NCCL warnings, no synchronization timeouts) and a healthy server throughout. The same soak on the native backend served 912 requests.

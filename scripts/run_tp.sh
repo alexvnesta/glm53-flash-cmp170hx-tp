@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Start the GLM-5.3-Flash API with the measured production configuration: TP=2 + DFlash2 K7 + hybrid drafting, two concurrent
-# sessions, shared prefix cache, 8 GiB RAM tier, 392,960-token context, image input. Extra arguments are passed to glm_api.py.
+# sessions, shared prefix cache, 8 GiB RAM tier, 392,960-token context, image input, NCCL (P2P) tensor-parallel backend. Extra arguments are passed to glm_api.py.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${GLM53_VENV:-$ROOT/.venv}/bin/python"
 MODELS_DIR="${MODELS_DIR:-$ROOT/models}"
 HOST="${HOST:-127.0.0.1}"; PORT="${PORT:-8012}"
 VISION="${VISION:-1}"; HYBRID_DRAFT_TOKENS="${HYBRID_DRAFT_TOKENS:-15}"; RAM_TIER_GIB="${RAM_TIER_GIB:-8}"
-TP_BACKEND="${TP_BACKEND:-native}"
+TP_BACKEND="${TP_BACKEND:-nccl}"   # nccl = GPU P2P all-reduce (+4-6 % decode, +10 % prefill here); native = through host RAM
 for f in "$ROOT/engine-src/exllamav3/__init__.py" "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw/config.json" \
          "$MODELS_DIR/GLM-5.3-Flash-DFlash2-exl3-6bpw/model.safetensors"; do
   [ -e "$f" ] || { echo "missing $f (run apply_engine.sh, build_native.sh and get_models.sh first)"; exit 1; }
@@ -20,6 +20,7 @@ export EXL3_BC_ATTN=1 EXL3_MLA_KIDX_RING=32 EXL3_INT8_GEMV=0 EXL3_GEMV=0 EXL3_DS
 export EXL3_TP_WORKER_TIMEOUT=300 EXL3_TP_SHARING_STRATEGY=file_descriptor EXL3_AUTOSPLIT_MARGIN_MB=128
 export GLM53_PREFILL_CHUNK_SIZE=2048 GLM53_DYNAMIC_DRAFT=0 GLM53_RECORD_DRAFT_STATS=1 GLM53_TP_ACTIVE_HOST=0 GLM53_K_HCFUSE=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false
+export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-lo}"   # NCCL bootstrap stays on loopback
 ulimit -n 65536 2>/dev/null || true
 
 ARGS=(-m "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw" -dm "$MODELS_DIR/GLM-5.3-Flash-DFlash2-exl3-6bpw"
