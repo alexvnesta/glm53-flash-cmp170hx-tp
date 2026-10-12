@@ -1,0 +1,24 @@
+# Example systemd *user* unit. Copy to ~/.config/systemd/user/glm53-flash.service, set REPO below, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now glm53-flash.service
+#   loginctl enable-linger $USER     # keep it running without a login session
+[Unit]
+Description=GLM-5.3-Flash EXL3 API (2x CMP 170HX, TP=2 + DFlash2 + hybrid drafting)
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=REPO=%h/glm53-flash-tp
+WorkingDirectory=%h/glm53-flash-tp
+# The user manager can start before the NVIDIA driver is ready: wait for two free GPUs (up to 180 s).
+ExecStartPre=%h/glm53-flash-tp/scripts/wait_gpus.sh
+ExecStart=%h/glm53-flash-tp/scripts/run_tp.sh
+TimeoutStartSec=900
+# The server does not exit on SIGTERM quickly; a short stop timeout avoids long restarts.
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=30
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

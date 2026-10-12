@@ -1,0 +1,8 @@
+.venv/
+engine-src/
+native/
+models/
+service/build/
+__pycache__/
+*.pyc
+*.so

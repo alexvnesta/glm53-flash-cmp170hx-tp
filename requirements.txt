@@ -1,0 +1,26 @@
+# Service dependencies, pinned to the versions the measured setup runs (2026-10-12).
+# PyTorch is installed separately by scripts/setup_venv.sh from the CUDA 13.0 wheel index:
+#   torch==2.14.1+cu130  (brings triton==3.8.0, nvidia-nccl-cu13==2.30.7 and the CUDA runtime wheels)
+# ExLlamaV3 is NOT installed from PyPI: the patched source tree (engine-src/) and the native build (native/) go on PYTHONPATH.
+fastapi==0.115.6
+starlette==0.41.3
+uvicorn==0.34.0
+pydantic==2.14.0
+pydantic_core==2.50.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+safetensors==0.8.0
+tokenizers==0.23.2
+huggingface_hub==1.33.0
+hf-xet==1.7.0
+numpy==2.5.3
+pillow==12.3.0
+ninja==1.13.2
+llguidance==1.9.1
+marisa-trie==1.4.1
+rich==15.0.0
+PyYAML==6.0.3
+httpx==0.28.1
+tqdm==4.70.1
+packaging==26.3
+typing_extensions==4.16.0
