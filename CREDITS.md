@@ -12,6 +12,9 @@
 - **incoai**, the [GLM-5.3-Flash DFlash2 drafter](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
 - **0xSero**, the `k_hcfuse` fused hyper-connection kernels (via Flun's repo).
 - **MiaAI-Lab**, the DFlash2 EXL3 conversion reference Flun credits.
+- **Morrowmake** ([glm53-flash-cmp170hx-recipe](https://github.com/Morrowmake/glm53-flash-cmp170hx-recipe), MIT): the idea of verifying
+  GPU peer-to-peer by content before enabling it on these cards, which `scripts/p2p_check.py` reimplements, and the benchmark prompt
+  style used for comparison in docs/PERFORMANCE.md.
 - **bayley** and **arvkmr** ([vllm-170hx-glm5](https://github.com/bayley/vllm-170hx-glm5)): the all-zero-row fault probe idea and
   the router-precision findings from their vLLM work on these cards. We reimplemented the ideas; no code was copied.
 - Flun's r/LocalLLaMA write-up and its commenters, which prompted the comparisons in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
