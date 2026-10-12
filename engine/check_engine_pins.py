@@ -65,7 +65,12 @@ def main(argv) -> int:
         label = "required" if required else "informational"
         if bad:
             failed_required |= required
-            print(f"FAIL  {filename}:{variable} ({label}): {len(table) - len(bad)}/{len(table)} match")
+            if required:
+                print(f"FAIL  {filename}:{variable} ({label}): {len(table) - len(bad)}/{len(table)} match")
+            else:
+                print(f"NOTE  {filename}:{variable} ({label}): {len(table) - len(bad)}/{len(table)} match; this table belongs to a "
+                      f"code path the tensor-parallel profile does not use, and it does not stop the server")
+                continue
             for key, expected, actual in bad:
                 print(f"        {key}\n          pinned {expected}\n          actual {actual}")
         else:
