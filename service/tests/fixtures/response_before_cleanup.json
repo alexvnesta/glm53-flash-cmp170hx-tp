@@ -1,0 +1,10 @@
+{
+  "license": "MIT, inherited Flun service license",
+  "full_api_sha256": "c015a00ed7fc7292a97e21aa465bfd61e6ce8ee149d5bbf7debba3966a35e1a6",
+  "fixture_sha256": "4ef8a3203b5f48fc29d96d49020ec06bb22888e7d9036ea29072bfcfc5053225",
+  "functions": [
+    "stream_text",
+    "complete"
+  ],
+  "scope": "Exact function source excerpts before response-lifetime cleanup; executed via AST with CPU job stand-ins."
+}

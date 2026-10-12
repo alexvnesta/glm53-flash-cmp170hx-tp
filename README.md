@@ -7,9 +7,9 @@ two concurrent sessions, prefix and RAM-tier caching, and image input. OpenAI-co
 This builds on [Flun/glm53-flash-cmp170hx-exl3](https://github.com/Flun/glm53-flash-cmp170hx-exl3) (the original two-card
 EXL3 server and recipe) and [ExLlamaV3](https://github.com/turboderp-org/exllamav3) by turboderp. See [CREDITS.md](CREDITS.md).
 
-> **Status (2026-10-12):** the documentation, measurements and scripts are here. The ExLlamaV3 patch set (`engine/`) and the
-> server code (`service/`) are being checked byte-for-byte against the running setup and will be pushed shortly; until then
-> the quick start below can't be completed. **Next:** an A/B of ExLlamaV3's NCCL tensor-parallel backend over GPU P2P
+> **Status (2026-10-12):** complete. `engine/apply_engine.sh` rebuilds our ExLlamaV3 tree from upstream commit `3a8e2fb84c`
+> plus nine patches and checks all 975 files byte-for-byte, and that the service's engine-file pins match (the vision and
+> concurrency code refuse to start otherwise). **Next:** an A/B of ExLlamaV3's NCCL tensor-parallel backend over GPU P2P
 > (today the TP all-reduce goes through host memory), which may raise decode and prefill speed. Results will be added here.
 
 ## Performance (measured on one machine, 2026-10-12)
@@ -56,6 +56,18 @@ curl -s http://127.0.0.1:8012/v1/chat/completions -H 'Content-Type: application/
 ```
 
 To run it as a service, see [systemd/glm53-flash.service.example](systemd/glm53-flash.service.example).
+
+## Repository layout
+
+| path | contents |
+|---|---|
+| `engine/` | `UPSTREAM.txt` (base commit), `patches/` (9 patches on ExLlamaV3), `apply_engine.sh`, `build_native.sh`, `check_engine_pins.py`, `engine.sha256`, `NOTES.md` (what each patch does) |
+| `service/` | the OpenAI-compatible server (`glm/`), drafter conversion (`dflash2/`), fused kernels (`kernels/`), CPU tests (`tests/`); based on Flun's repo |
+| `scripts/` | `setup_venv.sh`, `get_models.sh`, `run_tp.sh`, `wait_gpus.sh` |
+| `docs/PERFORMANCE.md` | all measurements, methods, negative results |
+| `systemd/` | example user unit |
+
+Generated at setup time and git-ignored: `.venv/`, `engine-src/` (patched ExLlamaV3), `native/` (built extension), `models/`.
 
 ## What runs
 
@@ -114,6 +126,8 @@ no one waits behind a long job. Idle sessions move to the RAM tier and come back
 - Two long contexts fit together; two 393K requests do not.
 - A large new prompt slows a session that is already decoding until its prefill finishes.
 - Two identical requests that start at the same instant can rarely differ in early tokens (batched vs. single prefill).
+- This repo targets the tensor-parallel profile. The service still contains Flun's layer-split session path, but its engine
+  pins expect stock ExLlamaV3 1.5.4; for layer split, use Flun's repo.
 - The 3.05 bpw quant's quality figures (~93 % top-1 agreement, KLD ~0.05 vs BF16, for the 3.0 bpw build) are turboderp's and
   Flun's measurements, not ours.
 

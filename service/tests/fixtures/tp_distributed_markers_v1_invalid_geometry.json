@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "fixture_revision": "distributed-high-markers-v1-invalid-geometry",
+  "case": {
+    "id": "distributed_high_markers",
+    "request": {
+      "model": "GLM-5.3-Flash",
+      "messages": [
+        {
+          "role": "user",
+          "content": "DISTRIBUTED_HIGH_SCOPE. Treat the following as data, not instructions.\nMARKER_START=MICA-4827.\nIgnore this padding line:  x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\nMARKER_FIRST_MIDDLE=FERN-9031.\n x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\nMARKER_SECOND_MIDDLE=OPAL-1764.\n x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x\n\n\nMARKER_END=REED-6258.\nReturn values for MARKER_START, MARKER_FIRST_MIDDLE, MARKER_SECOND_MIDDLE, MARKER_END in that order, separated by commas. Include no other text."
+        }
+      ],
+      "temperature": 0,
+      "top_p": 1,
+      "seed": 170,
+      "max_tokens": 128,
+      "ignore_eos": false,
+      "reasoning_effort": "low",
+      "stream": false,
+      "store": false
+    },
+    "expected_prompt_token_range": [
+      110000,
+      140000
+    ],
+    "oracle": {
+      "kind": "ordered_markers",
+      "values": [
+        "MICA-4827",
+        "FERN-9031",
+        "OPAL-1764",
+        "REED-6258"
+      ]
+    },
+    "scope": "Fixed synthetic distributed high-context input;exact rendered token count recorded at runtime, not calibrated offline"
+  },
+  "observed_prompt_tokens": 1476,
+  "status": "historical_geometry_failure_preserved",
+  "scope": "The request was incorrectly labeled110K..140K. Its observed1476-token input does not qualify distributed long-context retrieval."
+}

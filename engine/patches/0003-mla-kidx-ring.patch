@@ -1,0 +1,863 @@
+Subject: MLA: optional ring buffer for the DSA indexer key plane (EXL3_MLA_KIDX_RING)
+
+MLA layers with a k-pool indexer (GLM-5.3) keep a per-token [k || gate] plane (k_idx) next to the pooled keys.
+That plane is only read to rebuild the pools touched by the current forward pass (its own rows plus at most
+kpool - 1 earlier rows of the same page). With EXL3_MLA_KIDX_RING=W (default 0 = off, the full plane) each page
+keeps only W slots, shaped (pages, W, idx_dim), token t in slot (t % PAGE_SIZE) % W. W must divide the page size
+and be at least kidx_ring_min_rows(kpool) (32 for kpool 4).
+
+The ring is an ordinary paged plane (rotated, tiered, copied and exported with its page). The plane-append and
+pool-update Triton kernels take a RING constexpr, and the eager path builds pools from the chunk's own rows
+before the ring write reuses the carry slots (_update_pool_plane_local). Speculative forwards of up to 16 rows
+are supported; model_init.init checks this, and that the model keeps recurrent state, because partial-page
+prompt reuse is refused with a ring. EXL3_KIDX_RING_SHADOW=1 is a debug mode for small caches that keeps full
+twin planes and byte-compares every forward.
+
+The design follows vLLM's Glm5NextTailCache (Apache-2.0; see the comments in cache/mla.py). Local design, no
+upstream counterpart. Test: tests/modules/mla/test_mla_kpool_ring.py.
+
+diff --git a/exllamav3/cache/mla.py b/exllamav3/cache/mla.py
+index 53fe0ab..408d832 100644
+--- a/exllamav3/cache/mla.py
++++ b/exllamav3/cache/mla.py
+@@ -8,6 +8,169 @@ if TYPE_CHECKING:
+     from ..modules import MLAttention
+     from ..model import Config
+ import numpy as np
++import os
++
++# k_idx ring (EXL3_MLA_KIDX_RING=W, default 0 = full plane): k-pool layers keep only W slots of the packed
++# [k || gate] plane per page, (pages, W, idx_dim), token t in slot (t % PAGE_SIZE) % W. The plane is read only
++# to (re)build the pools touched by the current forward: that forward's rows plus at most kpool - 1 earlier rows
++# of the same page (the open pool's "tail", in vLLM's terms). The ring rides the block table, so it is paged,
++# rotated, tiered, copied and TP-exported with its page like any other plane (QSAPlanes pattern, cache/qsa.py);
++# complete pages' ring rows are dead. Addressing is position-derived and nothing is rewound: rows rejected by
++# speculative decoding stay stale until re-advance overwrites them (as for DSV4LayerState, cache/dsa.py), which
++# is what the ring size must absorb. Graph steps (up to KIDX_RING_MAX_QLEN rows) stash all their rows before the
++# pool update reads them back; the eager path pools from its local chunk, reads the carry first, then stashes
++KIDX_RING_MAX_QLEN = 16   # bc_attn.MAX_QLEN == mla_attn.MAX_DECODE_QLEN
++# EXL3_KIDX_RING_SHADOW=1 (debug, small caches only): also keep full planes and check every forward's pools
++KIDX_SHADOW_MAX_PAGES = 256
++
++
++def kidx_ring_min_rows(kpool: int, num_spec: int = KIDX_RING_MAX_QLEN - 1) -> int:
++    # Adapted from vLLM (Apache-2.0), vllm/models/glm5next/common/attention.py, Glm5NextTailCache.
++    # get_kv_cache_spec @ 02e55d2a (PR #57169): "drafts behind a rejected pool-completing draft overwrite the
++    # keys read by its redo" unless the ring spans kpool + num_speculative_tokens rows, rounded up to a power
++    # of two pools. Here num_spec = (largest graph step) - 1, so GLM5.3 (kpool 4, steps <= 16 rows) needs 32
++    span = kpool + num_spec
++    return kpool * (1 << (-(-span // kpool) - 1).bit_length())
++
++
++def _kidx_ring(idx_dim, kpool, kidx_ring) -> int:
++    ring = int(os.environ.get("EXL3_MLA_KIDX_RING", 0) or 0) if kidx_ring is None else int(kidx_ring)
++    if not idx_dim:
++        return 0   # no indexer plane on this layer
++    assert ring == 0 or kpool, \
++        "EXL3_MLA_KIDX_RING requires a k-pool indexer: plain DSA scoring reads the whole k_idx plane"
++    # As vLLM requires its tail ring to divide the attention block size: then (t % PAGE_SIZE) % W == t % W
++    # (vLLM's pos % ring) and a pool's members sit in consecutive slots. A design simplification, not a
++    # correctness bound: (t % PAGE_SIZE) % W is collision-free for any W >= kpool + KIDX_RING_MAX_QLEN - 1
++    assert ring == 0 or (ring >= kidx_ring_min_rows(kpool) and PAGE_SIZE % ring == 0), \
++        f"k_idx ring must divide {PAGE_SIZE} and hold at least {kidx_ring_min_rows(kpool)} rows, got {ring}"
++    return ring
++
++
++def kidx_ring_check_setup(model, caches, max_spec_rows: int):
++    """Setup-time limits of the k_idx ring, for callers that know the longest speculative forward
++    (model_init.init: the cache's max_history + 1 rows). No-op unless a layer of `caches` has a ring.
++    1. Every speculative forward (graph step or eager verify) must fit KIDX_RING_MAX_QLEN rows: the
++       ring is sized so a rejected draft's rows never overwrite carry rows its redo reads, which holds
++       for steps of up to W - kpool + 2 rows (30 at W = 32) and is only guaranteed up to the graph's 16.
++    2. Prompt reuse must stay page aligned: Job copies a partial page for models without recurrent
++       state (generator/job.py), and a copied ring may lack the open pool's carry rows (_copy_idx_page
++       refuses). GLM5.3 is recurrent, so its Job never takes that path."""
++    rings = [getattr(layer, "kidx_ring", 0) for cache in caches if cache is not None
++             for layer in getattr(cache, "layers", {}).values()]
++    if not any(rings):
++        return
++    assert max_spec_rows <= KIDX_RING_MAX_QLEN, \
++        f"EXL3_MLA_KIDX_RING supports speculative forwards of at most {KIDX_RING_MAX_QLEN} rows " \
++        f"(num_draft_tokens + 1), got {max_spec_rows}"
++    assert model.caps.get("recurrent_states"), \
++        "EXL3_MLA_KIDX_RING requires a model with recurrent state: partial-page prompt reuse is not supported"
++
++
++class _KidxShadow:
++    """Full-plane twin of a ring layer's indexer planes (EXL3_KIDX_RING_SHADOW): the pre-ring layout, written and
++    pooled by the pre-ring code, compared against the ring layer's pools after every forward."""
++    kidx_ring = 0
++
++    def __init__(self, k_idx: torch.Tensor, k_pool: torch.Tensor):
++        self.k_idx = k_idx
++        self.k_pool = k_pool
++
++    def update_idx_direct(self, cache_seqlens, block_table, k_idx, length):
++        from ..modules.attention_fn.mla_triton import mla_plane_append
++        mla_plane_append(k_idx.reshape(k_idx.shape[0], length, self.k_idx.shape[-1]),
++                         self.k_idx, block_table, cache_seqlens)
++
++    def get_idx(self) -> torch.Tensor:
++        return self.k_idx
++
++    def get_pool(self) -> torch.Tensor:
++        return self.k_pool
++
++    def update_pool_direct(self, pool_seqlens, block_table, pool_keys):
++        from ..modules.attention_fn.mla_triton import mla_plane_append
++        mla_plane_append(pool_keys, self.k_pool, block_table, pool_seqlens)
++
++    def check(self, layer, block_table, host_seqlens, seqlen, open_pools):
++        """Byte-compare the ring layer with this twin after one forward of seqlen rows per batch row: the ring
++        slots it wrote, and the pools it built (complete ones; with open_pools also the open pool, which the
++        graph's pool update writes too). Raises on the first mismatch, naming the forward."""
++        ring, P = layer.kidx_ring, layer.kpool
++        epp = PAGE_SIZE // P
++        for b in range(block_table.shape[0]):
++            bt = block_table[b]
++            pos0 = host_seqlens[b]
++            end = pos0 + seqlen
++            tok = torch.arange(end - min(seqlen, ring), end, device = bt.device)
++            page = bt[tok // PAGE_SIZE].long()
++            ring_ok = torch.equal(layer.k_idx[page, (tok % PAGE_SIZE) % ring].view(torch.int16),
++                                  self.k_idx[page, tok % PAGE_SIZE].view(torch.int16))
++            pools = torch.arange(pos0 // P, -(-end // P) if open_pools else end // P, device = bt.device)
++            pp = bt[pools // epp].long()
++            pool_ok = torch.equal(layer.k_pool[pp, pools % epp].view(torch.int16),
++                                  self.k_pool[pp, pools % epp].view(torch.int16))
++            if not (ring_ok and pool_ok):
++                raise AssertionError(
++                    f"k_idx ring shadow mismatch ({'ring rows' if not ring_ok else 'pooled keys'}): layer "
++                    f"{getattr(layer.attention, 'layer_idx', '?')}, batch row {b}, pos0 {pos0}, rows {seqlen}, "
++                    f"open_pools {open_pools}")
++
++
++def _kidx_shadow_enabled(ring, pages, kidx_shadow) -> bool:
++    shadow = (os.environ.get("EXL3_KIDX_RING_SHADOW", "0") != "0") if kidx_shadow is None else bool(kidx_shadow)
++    if not ring:
++        return False
++    assert not shadow or pages <= KIDX_SHADOW_MAX_PAGES, \
++        f"EXL3_KIDX_RING_SHADOW is for small caches (<= {KIDX_SHADOW_MAX_PAGES} pages)"
++    return shadow
++
++
++def _update_idx(layer, cache_seqlens, block_table, k_idx, length):
++    """Shared update_idx_direct body. With a ring, only the last min(length, ring) rows are written.
++    That is vLLM's tail semantics (vllm/models/glm5next/nvidia/ops/kpool_compress.py, Apache-2.0:
++    decode stashes EVERY token -- gating the stash once left 3 stale ring entries in decode-built
++    pools -- and prefill seeds the trailing pool): every graph or verify step (<= 16 rows) is
++    stashed whole, and a long chunk keeps a superset of its tail. More rows than slots in one
++    launch would race on slots, and the callers pool a chunk's own rows before writing."""
++    from ..modules.attention_fn.mla_triton import mla_plane_append
++    rows = k_idx.reshape(k_idx.shape[0], length, layer.shape_i[-1])
++    ring = layer.kidx_ring
++    if ring and length > ring:
++        rows = rows[:, length - ring:]
++        cache_seqlens = cache_seqlens + (length - ring)
++    mla_plane_append(rows, layer.k_idx, block_table, cache_seqlens, ring = ring)
++
++
++def _copy_idx_page(layer, source, from_page, to_page, num_tokens):
++    if layer.k_idx is None:
++        return
++    assert layer.shape_i == source.shape_i
++    if not layer.kidx_ring:
++        layer.k_idx[to_page, :num_tokens, :].copy_(source.k_idx[from_page, :num_tokens, :], non_blocking = True)
++        return
++    # A pool left open by the copy (num_tokens % kpool != 0) would need the source page's carry rows, which its
++    # ring no longer holds once that page was written kpool - 1 + ring rows past them. Hybrid recurrent models
++    # (GLM5.3) never copy partial pages (Job skips it when a recurrent cache exists); refuse instead of corrupting
++    assert num_tokens % layer.kpool == 0, \
++        "partial-page copy into an open pool is not supported with the k_idx ring (EXL3_MLA_KIDX_RING)"
++    layer.k_idx[to_page].copy_(source.k_idx[from_page], non_blocking = True)
++    if layer.kidx_shadow is not None:
++        layer.kidx_shadow.k_idx[to_page, :num_tokens].copy_(
++            source.kidx_shadow.k_idx[from_page, :num_tokens], non_blocking = True)
++        n_pool = num_tokens // layer.kpool
++        layer.kidx_shadow.k_pool[to_page, :n_pool].copy_(
++            source.kidx_shadow.k_pool[from_page, :n_pool], non_blocking = True)
++
++
++def _shadow_tensors(layer) -> list:
++    # Page-major too, so rotation and the CPU tier carry the shadow with its page
++    return [layer.kidx_shadow.k_idx, layer.kidx_shadow.k_pool] if layer.kidx_shadow is not None else []
++
++
++def _shadow_size(layer) -> int:
++    if not layer.kidx_shadow_on:
++        return 0
++    return (int(np.prod(layer.shape_i[::2])) * PAGE_SIZE + int(np.prod(layer.shape_p))) * torch.half.itemsize
+ 
+ 
+ class CacheLayer_MLA_fp16(CacheLayer):
+@@ -34,6 +197,8 @@ class CacheLayer_MLA_fp16(CacheLayer):
+         attention: MLAttention,
+         cache_id: int,
+         max_num_tokens: int,
++        kidx_ring: int | None = None,
++        kidx_shadow: bool | None = None,
+     ):
+         super().__init__(config, attention, cache_id, max_num_tokens)
+ 
+@@ -49,14 +214,16 @@ class CacheLayer_MLA_fp16(CacheLayer):
+             # DSA-on-MLA layers with their own lightning indexer (GLM-5.2 "full" layers) keep a
+             # per-token indexer-key plane alongside the latent
+             idx_dim = getattr(attention, "idx_plane_dim", None)
+-            self.shape_i = (pages, PAGE_SIZE, idx_dim) if idx_dim else None
+             # K-pool indexer compression (GLM5.3): a pooled-key plane maintained
+             # incrementally, one entry per kpool consecutive tokens (pools never straddle
+             # pages since PAGE_SIZE % kpool == 0)
+             kpool = getattr(attention, "index_kpool", 0)
+             self.kpool = kpool if (idx_dim and kpool) else 0
++            self.kidx_ring = _kidx_ring(idx_dim, self.kpool, kidx_ring)
++            self.shape_i = (pages, self.kidx_ring or PAGE_SIZE, idx_dim) if idx_dim else None
+             self.shape_p = (pages, PAGE_SIZE // kpool, attention.index_head_dim) \
+                 if self.kpool else None
++            self.kidx_shadow_on = _kidx_shadow_enabled(self.kidx_ring, pages, kidx_shadow)
+         else:
+             self.kv_lora_rank = None
+             self.qk_rope_head_dim = None
+@@ -64,12 +231,15 @@ class CacheLayer_MLA_fp16(CacheLayer):
+             self.shape_r = None
+             self.shape_i = None
+             self.kpool = 0
++            self.kidx_ring = 0
+             self.shape_p = None
++            self.kidx_shadow_on = False
+ 
+         self.k = None      # latent, (pages, PAGE_SIZE, 1, kv_lora_rank)
+         self.v = None      # rope key, (pages, PAGE_SIZE, 1, qk_rope_head_dim)
+-        self.k_idx = None  # indexer keys, (pages, PAGE_SIZE, index_head_dim), roped
++        self.k_idx = None  # indexer keys, (pages, PAGE_SIZE or kidx_ring, index_head_dim), roped
+         self.k_pool = None # pooled indexer keys, (pages, PAGE_SIZE // kpool, index_head_dim)
++        self.kidx_shadow = None
+         self.device = None
+ 
+ 
+@@ -80,6 +250,10 @@ class CacheLayer_MLA_fp16(CacheLayer):
+         self.v = torch.zeros(self.shape_r, dtype = torch.half, device = device) if self.shape_r else None
+         self.k_idx = torch.zeros(self.shape_i, dtype = torch.half, device = device) if self.shape_i else None
+         self.k_pool = torch.zeros(self.shape_p, dtype = torch.half, device = device) if self.shape_p else None
++        self.kidx_shadow = _KidxShadow(
++            torch.zeros((self.shape_i[0], PAGE_SIZE, self.shape_i[2]), dtype = torch.half, device = device),
++            torch.zeros(self.shape_p, dtype = torch.half, device = device),
++        ) if self.kidx_shadow_on else None
+ 
+ 
+     @override
+@@ -89,6 +263,7 @@ class CacheLayer_MLA_fp16(CacheLayer):
+         self.v = None
+         self.k_idx = None
+         self.k_pool = None
++        self.kidx_shadow = None
+ 
+ 
+     @override
+@@ -131,11 +306,7 @@ class CacheLayer_MLA_fp16(CacheLayer):
+     def update_idx_direct(self, cache_seqlens: torch.Tensor, block_table: torch.Tensor,
+                           k_idx: torch.Tensor, length: int):
+         """Append new indexer-key rows, shaped (bsz, length, index_head_dim), roped."""
+-        from ..modules.attention_fn.mla_triton import mla_plane_append
+-        mla_plane_append(
+-            k_idx.reshape(k_idx.shape[0], length, self.shape_i[-1]),
+-            self.k_idx, block_table, cache_seqlens,
+-        )
++        _update_idx(self, cache_seqlens, block_table, k_idx, length)
+ 
+ 
+     def get_idx(self) -> torch.Tensor:
+@@ -159,8 +330,7 @@ class CacheLayer_MLA_fp16(CacheLayer):
+         assert self.shape_c == source.shape_c and self.shape_r == source.shape_r
+         self.k[to_page, :num_tokens, :, :].copy_(source.k[from_page, :num_tokens, :, :], non_blocking = True)
+         self.v[to_page, :num_tokens, :, :].copy_(source.v[from_page, :num_tokens, :, :], non_blocking = True)
+-        if self.k_idx is not None:
+-            self.k_idx[to_page, :num_tokens, :].copy_(source.k_idx[from_page, :num_tokens, :], non_blocking = True)
++        _copy_idx_page(self, source, from_page, to_page, num_tokens)
+         if self.k_pool is not None:
+             # Pool entries covering the copied tokens (partial-pool entries are never read)
+             n_pool = -(-num_tokens // self.kpool)
+@@ -169,14 +339,14 @@ class CacheLayer_MLA_fp16(CacheLayer):
+ 
+     @override
+     def get_tensors(self):
+-        return [t for t in [self.k, self.v, self.k_idx, self.k_pool] if t is not None]
++        return [t for t in [self.k, self.v, self.k_idx, self.k_pool] if t is not None] + _shadow_tensors(self)
+ 
+ 
+     @override
+     def storage_size(self):
+         return (np.prod(self.shape_c) + np.prod(self.shape_r) +
+                 (np.prod(self.shape_i) if self.shape_i else 0) +
+-                (np.prod(self.shape_p) if self.shape_p else 0)) * torch.half.itemsize
++                (np.prod(self.shape_p) if self.shape_p else 0)) * torch.half.itemsize + _shadow_size(self)
+ 
+ 
+     @override
+@@ -192,7 +362,10 @@ class CacheLayer_MLA_fp16(CacheLayer):
+             "cls": CacheLayer_MLA_fp16,
+             "args": {
+                 "cache_id": self.cache_id,
+-                "max_num_tokens": self.max_num_tokens
++                "max_num_tokens": self.max_num_tokens,
++                # Resolved here, so ranks never read the environment for the plane layout
++                "kidx_ring": self.kidx_ring,
++                "kidx_shadow": self.kidx_shadow_on,
+             }
+         }
+ 
+@@ -222,6 +395,8 @@ class CacheLayer_MLA_quant(CacheLayer):
+         k_bits: int,
+         v_bits: int | None = None,
+         compand_a: float = 0.0,
++        kidx_ring: int | None = None,
++        kidx_shadow: bool | None = None,
+     ):
+         super().__init__(config, attention, cache_id, max_num_tokens)
+ 
+@@ -245,24 +420,29 @@ class CacheLayer_MLA_quant(CacheLayer):
+             self.sshape = (pages, PAGE_SIZE, groups)
+             self.shape_r = (pages, PAGE_SIZE, 1, self.qk_rope_head_dim)
+             idx_dim = getattr(attention, "idx_plane_dim", None)
+-            self.shape_i = (pages, PAGE_SIZE, idx_dim) if idx_dim else None
+             kpool = getattr(attention, "index_kpool", 0)
+             self.kpool = kpool if (idx_dim and kpool) else 0
++            self.kidx_ring = _kidx_ring(idx_dim, self.kpool, kidx_ring)
++            self.shape_i = (pages, self.kidx_ring or PAGE_SIZE, idx_dim) if idx_dim else None
+             self.shape_p = (pages, PAGE_SIZE // kpool, attention.index_head_dim) \
+                 if self.kpool else None
++            self.kidx_shadow_on = _kidx_shadow_enabled(self.kidx_ring, pages, kidx_shadow)
+         else:
+             self.qshape = None
+             self.sshape = None
+             self.shape_r = None
+             self.shape_i = None
+             self.kpool = 0
++            self.kidx_ring = 0
+             self.shape_p = None
++            self.kidx_shadow_on = False
+ 
+         self.qk = None     # packed latent, int32
+         self.sk = None     # fp16 group scales
+         self.v = None      # rope key, fp16
+-        self.k_idx = None  # indexer keys, fp16, roped
++        self.k_idx = None  # indexer keys, fp16, roped (kidx_ring rows per page when the ring is on)
+         self.k_pool = None # pooled indexer keys, fp16
++        self.kidx_shadow = None
+         self.device = None
+         self._scratch = {}
+ 
+@@ -275,6 +455,10 @@ class CacheLayer_MLA_quant(CacheLayer):
+         self.v = torch.zeros(self.shape_r, dtype = torch.half, device = device) if self.shape_r else None
+         self.k_idx = torch.zeros(self.shape_i, dtype = torch.half, device = device) if self.shape_i else None
+         self.k_pool = torch.zeros(self.shape_p, dtype = torch.half, device = device) if self.shape_p else None
++        self.kidx_shadow = _KidxShadow(
++            torch.zeros((self.shape_i[0], PAGE_SIZE, self.shape_i[2]), dtype = torch.half, device = device),
++            torch.zeros(self.shape_p, dtype = torch.half, device = device),
++        ) if self.kidx_shadow_on else None
+ 
+ 
+     @override
+@@ -285,6 +469,7 @@ class CacheLayer_MLA_quant(CacheLayer):
+         self.v = None
+         self.k_idx = None
+         self.k_pool = None
++        self.kidx_shadow = None
+         self._scratch = {}
+ 
+ 
+@@ -339,11 +524,7 @@ class CacheLayer_MLA_quant(CacheLayer):
+     def update_idx_direct(self, cache_seqlens: torch.Tensor, block_table: torch.Tensor,
+                           k_idx: torch.Tensor, length: int):
+         """Append new indexer-key rows, shaped (bsz, length, index_head_dim), roped."""
+-        from ..modules.attention_fn.mla_triton import mla_plane_append
+-        mla_plane_append(
+-            k_idx.reshape(k_idx.shape[0], length, self.shape_i[-1]),
+-            self.k_idx, block_table, cache_seqlens,
+-        )
++        _update_idx(self, cache_seqlens, block_table, k_idx, length)
+ 
+ 
+     def get_idx(self) -> torch.Tensor:
+@@ -366,8 +547,7 @@ class CacheLayer_MLA_quant(CacheLayer):
+         self.qk[to_page, :num_tokens, :].copy_(source.qk[from_page, :num_tokens, :], non_blocking = True)
+         self.sk[to_page, :num_tokens, :].copy_(source.sk[from_page, :num_tokens, :], non_blocking = True)
+         self.v[to_page, :num_tokens, :, :].copy_(source.v[from_page, :num_tokens, :, :], non_blocking = True)
+-        if self.k_idx is not None:
+-            self.k_idx[to_page, :num_tokens, :].copy_(source.k_idx[from_page, :num_tokens, :], non_blocking = True)
++        _copy_idx_page(self, source, from_page, to_page, num_tokens)
+         if self.k_pool is not None:
+             n_pool = -(-num_tokens // self.kpool)
+             self.k_pool[to_page, :n_pool, :].copy_(source.k_pool[from_page, :n_pool, :], non_blocking = True)
+@@ -375,7 +555,8 @@ class CacheLayer_MLA_quant(CacheLayer):
+ 
+     @override
+     def get_tensors(self):
+-        return [t for t in [self.qk, self.sk, self.v, self.k_idx, self.k_pool] if t is not None]
++        return [t for t in [self.qk, self.sk, self.v, self.k_idx, self.k_pool] if t is not None] + \
++            _shadow_tensors(self)
+ 
+ 
+     @override
+@@ -385,7 +566,7 @@ class CacheLayer_MLA_quant(CacheLayer):
+             np.prod(self.sshape) * torch.half.itemsize +
+             (np.prod(self.shape_r) + (np.prod(self.shape_i) if self.shape_i else 0) +
+              (np.prod(self.shape_p) if self.shape_p else 0)) * torch.half.itemsize
+-        )
++        ) + _shadow_size(self)
+ 
+ 
+     @override
+@@ -404,5 +585,7 @@ class CacheLayer_MLA_quant(CacheLayer):
+                 "max_num_tokens": self.max_num_tokens,
+                 "k_bits": self.k_bits,
+                 "v_bits": self.v_bits,
++                "kidx_ring": self.kidx_ring,
++                "kidx_shadow": self.kidx_shadow_on,
+             }
+         }
+diff --git a/exllamav3/model_init.py b/exllamav3/model_init.py
+index 04b76ad..f009da6 100755
+--- a/exllamav3/model_init.py
++++ b/exllamav3/model_init.py
+@@ -323,6 +323,12 @@ def init(
+         cache = None
+         draft_cache = None
+ 
++    # k_idx ring limits (cache/mla.py, EXL3_MLA_KIDX_RING; no-op without a ring), before any weights
++    # load: max_history is the longest speculative pass in draft tokens, so a verify step is one more row
++    if cache is not None:
++        from .cache.mla import kidx_ring_check_setup
++        kidx_ring_check_setup(model, (cache, draft_cache), max_history + 1)
++
+     # Split
+     if args.gpu_split is None or args.gpu_split == "auto":
+         split = None
+diff --git a/exllamav3/modules/attention_fn/bc_attn.py b/exllamav3/modules/attention_fn/bc_attn.py
+index 15d6c5a..f316021 100644
+--- a/exllamav3/modules/attention_fn/bc_attn.py
++++ b/exllamav3/modules/attention_fn/bc_attn.py
+@@ -489,11 +489,13 @@ class BCAttn:
+             | {n: "constexpr" for n in ("eps", "H_i", "D")},
+             dict(eps = float(idx.q_layernorm.rms_norm_eps), H_i = Hi, D = Di), 2, 1)
+ 
++        # RING (the MLA k_idx ring) must be named even at its default: ASTSource does not fill
++        # an omitted constexpr default (Triton 3.8 fails to compile)
+         k_raw_append = _compile_kernel(dev, _mla_plane_update_kernel,
+             {"rows_new": "*fp16", "plane_cache": "*fp16", "block_table": "*i32",
+              "cache_seqlens": "*i32", "num_pages_per_seq": "i32", "append_len": "i32"}
+-            | {n: "constexpr" for n in ("page_size", "D", "DST_D", "DST_OFF")},
+-            dict(page_size = PAGE_SIZE, D = Di, DST_D = 0, DST_OFF = 0), 2, 2)
++            | {n: "constexpr" for n in ("page_size", "D", "DST_D", "DST_OFF", "RING")},
++            dict(page_size = PAGE_SIZE, D = Di, DST_D = 0, DST_OFF = 0, RING = 0), 2, 2)
+ 
+         k_pool_update = _compile_kernel(dev, _qsa_pool_update_kernel,
+             {"raw_plane": "*fp16", "pool_plane": "*fp16", "k_norm_w": "*fp16",
+diff --git a/exllamav3/modules/attention_fn/bc_mla.py b/exllamav3/modules/attention_fn/bc_mla.py
+index fb111e3..e997b03 100644
+--- a/exllamav3/modules/attention_fn/bc_mla.py
++++ b/exllamav3/modules/attention_fn/bc_mla.py
+@@ -127,6 +127,14 @@ class BCMLA:
+         # kpool (GLM5.3): the key plane packs [k || gate_scores] rows and selection runs over
+         # pooled keys in a second plane; only full-indexer layers do kpool work
+         self.index_kpool = m.index_kpool if m.indexer_mode == "full" else 0
++        # k_idx ring (cache/mla.py): the plane-append and pool-update kernels address the
++        # (pages * ring, 2 * D_i) plane; a graph step writes up to MAX_QLEN rows before reading
++        self.kidx_ring = getattr(layer, "kidx_ring", 0) if self.index_kpool else 0
++        assert not getattr(layer, "kidx_ring", 0) or self.index_kpool, "k_idx ring without a k-pool indexer"
++        assert not self.kidx_ring or self.kidx_ring >= MAX_QLEN + self.index_kpool - 1
++        self.kidx_shadow = getattr(layer, "kidx_shadow", None) if self.kidx_ring else None
++        self.layer = layer if self.kidx_shadow is not None else None
++        self.slot_rows = {}
+         if m.indexer_mode == "full":
+             self.cache_kidx = layer.get_idx()
+             self.idx_norm_eps = m.idx_k_norm.layernorm_eps
+@@ -366,12 +374,14 @@ class BCMLA:
+                 {"k_raw": "*fp16", "w": "*fp16", "b": "*fp16", "k_out": "*fp16", "R": "i32"}
+                 | {n: "constexpr" for n in ("eps", "D")},
+                 dict(eps = float(self.idx_norm_eps), D = Di), 2, 1)
++            # RING (k_idx ring, cache/mla.py) is always passed explicitly: it is baked in as a
++            # constexpr, the launch argument lists in mla_attention.cpp are unchanged
+             plane_sig = {"rows_new": "*fp16", "plane_cache": "*fp16", "block_table": "*i32",
+                  "cache_seqlens": "*i32", "num_pages_per_seq": "i32", "append_len": "i32"} \
+-                | {n: "constexpr" for n in ("page_size", "D", "DST_D", "DST_OFF")}
++                | {n: "constexpr" for n in ("page_size", "D", "DST_D", "DST_OFF", "RING")}
+             k_plane_append = _compile_kernel(dev, _mla_plane_update_kernel, plane_sig,
+                 dict(page_size = PAGE_SIZE, D = Di,
+-                     DST_D = 2 * Di if P else 0, DST_OFF = 0), 2, 2)
++                     DST_D = 2 * Di if P else 0, DST_OFF = 0, RING = self.kidx_ring), 2, 2)
+ 
+         gidx = pool_idx = None
+         k_gate_append = k_pool_update = k_pool_expand = None
+@@ -380,13 +390,17 @@ class BCMLA:
+             gidx = sbuf("bcm_gidx", R_pad, Di)
+             gidx.zero_()
+             k_gate_append = _compile_kernel(dev, _mla_plane_update_kernel, plane_sig,
+-                dict(page_size = PAGE_SIZE, D = Di, DST_D = 2 * Di, DST_OFF = Di), 2, 2)
++                dict(page_size = PAGE_SIZE, D = Di, DST_D = 2 * Di, DST_OFF = Di,
++                     RING = self.kidx_ring), 2, 2)
+             k_pool_update = _compile_kernel(dev, _dsa_pool_update_kernel,
+                 {"plane": "*fp16", "pool_plane": "*fp16", "ape": "*fp32",
+                  "block_table": "*i32", "cache_seqlens": "*i32",
+                  "num_pages_per_row": "i32", "append_len": "i32"}
+-                | {n: "constexpr" for n in ("page_size", "P", "D", "MAXPOOLS")},
+-                dict(page_size = PAGE_SIZE, P = P, D = Di, MAXPOOLS = q_len // P + 1), 2, 1)
++                | {n: "constexpr" for n in ("page_size", "P", "D", "MAXPOOLS", "RING")},
++                dict(page_size = PAGE_SIZE, P = P, D = Di, MAXPOOLS = q_len // P + 1,
++                     RING = self.kidx_ring), 2, 1)
++        if full and self.kidx_shadow is not None:
++            self.slot_rows[(bsz, q_len)] = (kidx_n, gidx)
+ 
+         indices = dsa_arr = ws_ml = ws_acc = None
+         k_dsa_split = k_dsa_combine = None
+@@ -555,8 +569,29 @@ class BCMLA:
+                     position_ids, regime, t_total, ext_indices)
+         if regime and self.indexer_mode == "full":
+             params["dsa_topk_indices"] = self.slot_indices[(bsz, q_len)]
++        if self.kidx_shadow is not None:
++            self._ring_shadow_check(q_len, cache_seqlens, block_table, params["_mla_host_seqlens"])
+         return y
+ 
++    def _ring_shadow_check(self, q_len, cache_seqlens, block_table, host_seqlens):
++        """EXL3_KIDX_RING_SHADOW: this step's [k || gate] rows are still in the slot statics (layers run in
++        order on one stream); append them to the full shadow plane and rebuild the touched pools there with the
++        same pool kernel at RING = 0, then byte-compare against the ring layer, open pool included (the graph's
++        pool update writes it too)."""
++        from .mla_triton import mla_plane_append
++        from .dsa_triton import _dsa_pool_update_kernel
++        kidx_n, gidx = self.slot_rows[(1, q_len)]
++        rows = torch.cat((kidx_n[:q_len], gidx[:q_len]), dim = -1).unsqueeze(0)
++        shadow, P, Di = self.kidx_shadow, self.index_kpool, self.module.index_head_dim
++        mla_plane_append(rows, shadow.k_idx, block_table, cache_seqlens)
++        with torch.cuda.device(self.device):
++            _dsa_pool_update_kernel[(1, q_len // P + 1)](
++                shadow.k_idx.view(-1, 2 * Di), shadow.k_pool.view(-1, Di), self.module.idx_kpool_ape,
++                block_table, cache_seqlens, block_table.shape[1], q_len,
++                page_size = PAGE_SIZE, P = P, D = Di, MAXPOOLS = q_len // P + 1,
++            )
++        shadow.check(self.layer, block_table, host_seqlens, q_len, open_pools = True)
++
+ 
+ def _proj_ok(p, in_features = None, out_features = None):
+     """Quantized projection usable inside the graph: EXL3 with a bound BC class, no bias, and
+diff --git a/exllamav3/modules/attention_fn/dsa_triton.py b/exllamav3/modules/attention_fn/dsa_triton.py
+index efc8ad9..691eb34 100644
+--- a/exllamav3/modules/attention_fn/dsa_triton.py
++++ b/exllamav3/modules/attention_fn/dsa_triton.py
+@@ -747,12 +747,16 @@ def _dsa_pool_update_kernel(
+     P: tl.constexpr,     # tokens per pool
+     D: tl.constexpr,
+     MAXPOOLS: tl.constexpr,   # grid height: append_len // P + 1
++    RING: tl.constexpr = 0,   # > 0: plane is the k_idx ring, flat (pages * RING, 2 * D), slot (tok % page_size) % RING
+ ):
+     """(Re)build the pooled keys touched by this append: softmax(gate + ape) over the
+     pool's present members, weighted mean of their keys. Branch-free w.r.t. pool
+     completion: partially filled pools are written too but never selected (the causal
+     bound admits only complete pools), and the write that completes a pool sees all P
+-    members. Pools never straddle pages (page_size % P == 0)."""
++    members. Pools never straddle pages (page_size % P == 0). With RING, a member read
++    here lies at most q_len + P - 2 rows before any row written since (this append's, or a
++    rejected draft row of an earlier step), so it survives in a ring of at least
++    MAX_QLEN + P - 1 slots (cache/mla.py)."""
+     b = tl.program_id(0)
+     pi = tl.program_id(1)
+     pos0 = tl.load(cache_seqlens + b)
+@@ -770,7 +774,10 @@ def _dsa_pool_update_kernel(
+         tok = pool * P + j
+         if tok < t_end:
+             phys = tl.load(bt + tok // page_size)
+-            row = phys * page_size + tok % page_size
++            if RING > 0:
++                row = phys * RING + (tok % page_size) % RING
++            else:
++                row = phys * page_size + tok % page_size
+             gv = tl.load(plane + row * (2 * D) + D + offs_d).to(tl.float32) \
+                + tl.load(ape + j * D + offs_d).to(tl.float32)
+             m = tl.maximum(m, gv)
+@@ -780,7 +787,10 @@ def _dsa_pool_update_kernel(
+         tok = pool * P + j
+         if tok < t_end:
+             phys = tl.load(bt + tok // page_size)
+-            row = phys * page_size + tok % page_size
++            if RING > 0:
++                row = phys * RING + (tok % page_size) % RING
++            else:
++                row = phys * page_size + tok % page_size
+             gv = tl.load(plane + row * (2 * D) + D + offs_d).to(tl.float32) \
+                + tl.load(ape + j * D + offs_d).to(tl.float32)
+             e = tl.exp(gv - m)
+diff --git a/exllamav3/modules/attention_fn/mla_triton.py b/exllamav3/modules/attention_fn/mla_triton.py
+index 1ff3e8f..e93629a 100644
+--- a/exllamav3/modules/attention_fn/mla_triton.py
++++ b/exllamav3/modules/attention_fn/mla_triton.py
+@@ -159,10 +159,12 @@ def _mla_plane_update_kernel(
+     D: tl.constexpr,
+     DST_D: tl.constexpr = 0,   # plane row width when packing (0 = D); rows land at DST_OFF
+     DST_OFF: tl.constexpr = 0,
++    RING: tl.constexpr = 0,    # > 0: plane holds RING slots per page, (pages, RING, DST_D), slot page_off % RING
+ ):
+     """Single-plane variant of _mla_kv_update_kernel, for the per-token indexer-key rows
+     of DSA-on-MLA layers (GLM-5.2). The DST_D/DST_OFF variant packs a D-wide source into
+-    a slice of a wider plane row (GLM5.3 kpool: [k || gate_scores])."""
++    a slice of a wider plane row (GLM5.3 kpool: [k || gate_scores]). RING > 0 is the k_idx
++    ring (cache/mla.py); page_size stays the logical page size."""
+     row = tl.program_id(0)
+     batch = row // append_len
+     pos = row - batch * append_len
+@@ -171,7 +173,10 @@ def _mla_plane_update_kernel(
+     page = abs_pos // page_size
+     page_off = abs_pos - page * page_size
+     phys = tl.load(block_table + batch * num_pages_per_seq + page)
+-    tok = phys * page_size + page_off
++    if RING > 0:
++        tok = phys * RING + page_off % RING
++    else:
++        tok = phys * page_size + page_off
+ 
+     offs = tl.arange(0, D)
+     dst_d = DST_D if DST_D > 0 else D
+@@ -815,16 +820,24 @@ def mla_plane_append(
+     plane_cache: torch.Tensor,  # (pages, page_size, D) or any layout flattening to that
+     block_table: torch.Tensor,
+     cache_seqlens: torch.Tensor,
++    ring: int = 0,
+ ):
+-    """Append per-token rows to a paged fp16 side plane (DSA indexer keys)."""
++    """Append per-token rows to a paged fp16 side plane (DSA indexer keys). ring > 0: the plane
++    is a k_idx ring, (pages, ring, D); rows of one call must not collide (length <= ring)."""
+     bsz, length, D = rows_new.shape
+-    page_size = plane_cache.shape[1]
++    if ring:
++        from ...constants import PAGE_SIZE
++        assert plane_cache.shape[1] == ring and length <= ring
++        page_size = PAGE_SIZE
++    else:
++        page_size = plane_cache.shape[1]
+     if length == 0:
+         return
+     with torch.cuda.device(rows_new.device):
+         _mla_plane_update_kernel[(bsz * length,)](
+             rows_new.contiguous(), plane_cache, block_table, cache_seqlens,
+             block_table.shape[1], length, page_size, D,
++            RING = ring,
+             num_warps = 2, num_stages = 2,
+         )
+     _dbg_sync("mla_plane_append", rows_new.device)
+diff --git a/exllamav3/modules/mla_attn.py b/exllamav3/modules/mla_attn.py
+index 418b375..bbcc6dc 100644
+--- a/exllamav3/modules/mla_attn.py
++++ b/exllamav3/modules/mla_attn.py
+@@ -608,8 +608,10 @@ class MLAttention(Module):
+         append. A pool's key is the (gate_scores + APE)-softmax-weighted mean of its
+         index_kpool members' keys; members are read back from the packed per-token plane
+         (already appended), so pools straddling chunk boundaries resolve correctly. Complete
+-        pools are immutable, so each is written exactly once.
++        pools are immutable, so each is written exactly once. Full planes only: the k_idx ring
++        uses _update_pool_plane_local (plane.shape[1] is the page size here).
+         """
++        assert not getattr(idx_layer, "kidx_ring", 0), "k_idx ring layers pool via _update_pool_plane_local"
+         P, D_i = self.index_kpool, self.index_head_dim
+         plane = idx_layer.get_idx()
+         epp = plane.shape[1]
+@@ -636,6 +638,47 @@ class MLAttention(Module):
+             )
+ 
+ 
++    def _update_pool_plane_local(self, idx_layer, block_table, host_seqlens, seqlen, k_idx):
++        """
++        _update_pool_plane for the k_idx ring (cache/mla.py, EXL3_MLA_KIDX_RING): members this
++        chunk appends come from the chunk's own rows (k_idx, (bsz, seqlen, 2 * D_i)), and only
++        the open pool's earlier members -- at most index_kpool - 1 carry rows, on the same page
++        -- are gathered from the ring. Must run before the chunk's ring write, which may reuse
++        the carry rows' slots (vLLM's per-token order: completion read first, stash second,
++        vllm/models/glm5next/nvidia/ops/kpool_compress.py, Apache-2.0). The members are the
++        same fp16 values the full plane would return
++        (the append copies rows unchanged), in a tensor of the same shape, so the math below,
++        identical to _update_pool_plane, yields the same pooled keys.
++        """
++        from ..constants import PAGE_SIZE
++        P, D_i = self.index_kpool, self.index_head_dim
++        ring = idx_layer.kidx_ring
++        plane = idx_layer.get_idx()
++        assert ring and plane.shape[1] == ring
++        flat = plane.view(-1, 2 * D_i)
++        ape = self.idx_kpool_ape
++        for b in range(block_table.shape[0] if block_table.dim() == 2 else 1):
++            pos0 = host_seqlens[b]
++            first_pool = pos0 // P
++            last_pool = (pos0 + seqlen) // P
++            n_new = last_pool - first_pool
++            if n_new <= 0:
++                continue
++            bt = block_table[b]
++            tok = torch.arange(first_pool * P, pos0, device = plane.device)
++            rows = bt[tok // PAGE_SIZE].long() * ring + (tok % PAGE_SIZE) % ring
++            members = torch.cat((flat[rows], k_idx[b, : last_pool * P - pos0]))
++            members = members.view(n_new, P, 2 * D_i).float()
++            keys, gates = members[..., :D_i], members[..., D_i:]
++            probs = torch.softmax(gates + ape.unsqueeze(0), dim = 1)
++            pool_keys = (probs * keys).sum(dim = 1).to(torch.half)
++            idx_layer.update_pool_direct(
++                torch.tensor([first_pool], dtype = torch.int32, device = plane.device),
++                bt.unsqueeze(0) if bt.dim() == 1 else bt,
++                pool_keys.unsqueeze(0),
++            )
++
++
+     def _indexer_topk_kpool(self, x, params, q_resid, bsz, seqlen, host_seqlens,
+                             k_idx_chunk = None, idx_pool = None, pool_plane = None,
+                             block_table = None):
+@@ -872,9 +915,19 @@ class MLAttention(Module):
+         if self.indexer_mode == "full":
+             k_idx = self._indexer_keys(x, params, position, positions, position_ids, inv_freq)
+             if idx_layer is not None:
++                ring = getattr(idx_layer, "kidx_ring", 0)
++                if self.index_kpool and ring:
++                    # k_idx ring: pool from the chunk's rows before its write reuses carry slots
++                    self._update_pool_plane_local(idx_layer, block_table, host_seqlens, seqlen, k_idx)
+                 idx_layer.update_idx_direct(cache_seqlens, block_table, k_idx, seqlen)
+-                if self.index_kpool:
++                if self.index_kpool and not ring:
+                     self._update_pool_plane(idx_layer, block_table, host_seqlens, seqlen)
++                shadow = getattr(idx_layer, "kidx_shadow", None)
++                if shadow is not None:
++                    # EXL3_KIDX_RING_SHADOW: the pre-ring path on full twin planes, compared per forward
++                    shadow.update_idx_direct(cache_seqlens, block_table, k_idx, seqlen)
++                    self._update_pool_plane(shadow, block_table, host_seqlens, seqlen)
++                    shadow.check(idx_layer, block_table, host_seqlens, seqlen, open_pools = False)
+ 
+         if sparse:
+             if self.indexer_mode == "full":
+diff --git a/tests/modules/mla/test_mla_kpool_ring.py b/tests/modules/mla/test_mla_kpool_ring.py
+new file mode 100644
+index 0000000..a9d60d0
+--- /dev/null
++++ b/tests/modules/mla/test_mla_kpool_ring.py
+@@ -0,0 +1,128 @@
++"""
++L2 (GPU window only; NOT run in the CPU campaign): k_idx ring module exactness on one GPU.
++
++Copy to engine/tests/modules/mla/ in the candidate tree, then either the engine's pytest conftest (device fixture):
++    CUDA_VISIBLE_DEVICES=<test GPU> python -m pytest -q engine/tests/modules/mla/test_mla_kpool_ring.py --device cuda:0
++or, with a venv that has no pytest (the serving venv), standalone:
++    CUDA_VISIBLE_DEVICES=<test GPU> python engine/tests/modules/mla/test_mla_kpool_ring.py cuda:0
++Optionally once more under compute-sanitizer (catches a RING constexpr that did not apply: writes at phys * 256
++offsets into a (pages * 32)-row plane).
++
++A GLM5.3-shaped k-pool full-indexer MLA layer (NoPE, kpool 4) drives a full-plane cache layer and a ring cache layer
++(EXL3_MLA_KIDX_RING path, kidx_ring = 32) with identical inputs: eager prefill chunks, graph (BC) steps with q_len
++1 / 8 / 16, emulated rejections (rewound seqlens), bsz-2 eager verify (BC declines bsz > 1 for kpool) and BC <-> eager
++alternation. After every forward: identical outputs, identical dsa_topk_indices and byte-identical k_pool.
++Builder adapted from engine/tests/modules/mla/test_mla.py::build_exl3_nope and test_mla_dsa.py::build_dsa (in-tree,
++MIT), with the k-pool tensors; inputs scaled small as there (random trellis weights decode to O(1) entries).
++"""
++
++import os
++import sys
++
++import torch
++
++try:
++    import pytest
++except ImportError:                                   # standalone run (see __main__ below)
++    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
++    class pytest:
++        class mark:
++            @staticmethod
++            def parametrize(*a, **k):
++                return lambda f: f
++
++from exllamav3.cache import CacheLayer_MLA_fp16, CacheLayer_MLA_quant
++from exllamav3.constants import PAGE_SIZE
++
++from testlib.exl3 import checkpoint_tensors, generator
++from testlib.mla import KEY, load_mla, cached_params
++
++P, IDX_DIM, TOPK = 4, 128, 64
++
++
++def build_kpool(directory, device, H = 8, hidden = 512, kv_lora = 512, nope = 192, v_head = 128, q_lora = 256,
++                idx_heads = 4, seed = 0, K = 4):
++    """GLM5.3-shaped NoPE k-pool full-indexer MLA. The decode graph admits only EXL3 projections, so q_a / q_b /
++    kv_a / o / indexer.wq_b are random-trellis EXL3 (as in test_mla.py::build_exl3_nope); kv_b, the indexer key
++    and weight heads, norms and the k-pool APE / gate stay fp16, as in the checkpoint."""
++    g = generator(seed)
++    t = {}
++    for name, k, n in (("q_a_proj", hidden, q_lora), ("q_b_proj", q_lora, H * nope),
++                       ("kv_a_proj_with_mqa", hidden, kv_lora), ("o_proj", H * v_head, hidden),
++                       ("indexer.wq_b", q_lora, idx_heads * IDX_DIM)):
++        t.update(checkpoint_tensors(f"{KEY}.{name}", k, (n + 127) // 128 * 128, K, g, codebook = "mul1"))
++    def rnd(*shape, scale):
++        return (torch.randn(*shape, generator = g) * scale).half()
++    t[f"{KEY}.q_a_layernorm.weight"] = (torch.randn(q_lora, generator = g) * 0.1 + 1).half()
++    t[f"{KEY}.kv_a_layernorm.weight"] = (torch.randn(kv_lora, generator = g) * 0.1 + 1).half()
++    t[f"{KEY}.kv_b_proj.weight"] = rnd(H * (nope + v_head), kv_lora, scale = 0.085)
++    t[f"{KEY}.indexer.wk.weight"] = rnd(IDX_DIM, hidden, scale = 0.25)
++    t[f"{KEY}.indexer.k_norm.weight"] = (torch.randn(IDX_DIM, generator = g) * 0.1 + 1).half()
++    t[f"{KEY}.indexer.k_norm.bias"] = rnd(IDX_DIM, scale = 0.05)
++    t[f"{KEY}.indexer.weights_proj.weight"] = rnd(idx_heads, hidden, scale = 0.25)
++    t[f"{KEY}.indexer.index_kpool_compress_ape"] = torch.randn(P, IDX_DIM, generator = g) * 0.5
++    t[f"{KEY}.indexer.index_kpool_compress_gate"] = rnd(IDX_DIM, hidden, scale = 0.25)
++    module = load_mla(t, directory, device, H = H, hidden = hidden, kv_lora = kv_lora, nope = nope, rope_dim = 0,
++                      v_head = v_head, q_lora = q_lora, nope_only = True, indexer_mode = "full",
++                      index_n_heads = idx_heads, index_head_dim = IDX_DIM, index_topk = TOPK, index_kpool = P)
++    assert module.q_proj.quant_type == "exl3" and module.idx_wq_b.quant_type == "exl3"
++    return module
++
++
++def layers(module, pages, quant):
++    out = []
++    for ring in (0, 32):
++        layer = CacheLayer_MLA_quant(None, module, 0, pages * PAGE_SIZE, k_bits = 8, kidx_ring = ring) if quant \
++            else CacheLayer_MLA_fp16(None, module, 0, pages * PAGE_SIZE, kidx_ring = ring)
++        layer.alloc(module.device)
++        out.append(layer)
++    return out
++
++
++def step(module, layer, x, bt, pos):
++    seq = torch.tensor(pos, dtype = torch.int32)
++    params = cached_params(layer, bt, seq.to(x.device))
++    params["cache_seqlens"] = seq                    # host lengths, as the generator passes them
++    y = module.forward(x.contiguous(), params)
++    return y, params.get("dsa_topk_indices")
++
++
++@pytest.mark.parametrize("quant", [False, True])
++def test_ring_matches_full_plane_through_eager_and_graph_paths(tmp_path, device, quant):
++    torch.manual_seed(5)
++    module = build_kpool(tmp_path, device, seed = 5)
++    pages = 16
++    full, ring = layers(module, pages, quant)
++    perm = torch.randperm(pages, dtype = torch.int32)
++    bt = perm.view(2, pages // 2).to(device)
++    pos = [0, 0]
++    hidden = module.hidden_size
++    # (rows, q_len, accepted): prefill 512 + 300 for row 0, 256 + 17 for row 1, then graph / eager verify mixes
++    plan = [((0,), 512, None), ((0,), 300, None), ((1,), 256, None), ((1,), 17, None)]
++    plan += [((0,), q, a) for q, a in ((1, 1), (8, 3), (16, 16), (8, 1), (16, 5), (1, 1))]
++    plan += [((0, 1), 8, 2), ((0, 1), 8, 8), ((0,), 16, 2), ((0, 1), 8, 1), ((0,), 8, 8)] * 3
++    for i, (rows, q, accepted) in enumerate(plan):
++        x = (torch.randn((len(rows), q, hidden), device = device) * 0.03).half()
++        b = bt[list(rows)]
++        p = [pos[r] for r in rows]
++        y0, i0 = step(module, full, x, b, p)
++        y1, i1 = step(module, ring, x, b, p)
++        what = f"forward {i}: rows {rows} pos {p} q_len {q}"
++        assert torch.equal(y0, y1), what + " output"
++        assert (i0 is None) == (i1 is None) and (i0 is None or torch.equal(i0, i1)), what + " selection"
++        assert torch.equal(full.k_pool.view(torch.int16), ring.k_pool.view(torch.int16)), what + " k_pool"
++        for r in rows:
++            pos[r] += q if accepted is None else accepted      # rejected rows stay stale in both layouts
++    import exllamav3.modules.attention_fn.bc_mla as bcm
++    if bcm.bc_attn_enable:
++        assert any(bool(v) for v in module.dispatch_cache.values()), "decode graph declined: BC path not covered"
++
++
++if __name__ == "__main__":
++    import pathlib
++    import tempfile
++    for quant in (False, True):
++        with tempfile.TemporaryDirectory() as d:
++            test_ring_matches_full_plane_through_eager_and_graph_paths(pathlib.Path(d), sys.argv[1] if len(sys.argv) > 1
++                                                                       else "cuda:0", quant)
++        print(f"L2 quant={quant}: OK")

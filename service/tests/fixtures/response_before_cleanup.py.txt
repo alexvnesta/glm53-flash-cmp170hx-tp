@@ -1,0 +1,183 @@
+def stream_text(result, tokenizer):
+    text = result.get("text", "")
+    # EXL3's piece join can emit an interior replacement character when the next
+    # token completes a Korean UTF-8 character and also contains printable text.
+    # Decode the held token group together, keeping stop-string trimming intact.
+    if ("\ufffd" in text and result.get("token_ids") is not None
+            and result.get("eos_reason") != "stop_string"):
+        decoded = tokenizer.decode(result["token_ids"], decode_special_tokens=True)
+        return decoded[0] if isinstance(decoded, list) else decoded
+    return text
+
+async def complete(body, request, chat):
+    from exllamav3 import AsyncJob, ComboSampler, GreedySampler
+    if body.store:
+        raise HTTPException(400, "Stored completions are unsupported; use store=false")
+    if body.model not in (MODEL_ID, "glm", Path(runtime["args"].model_dir).name):
+        raise HTTPException(404, f"Unknown model: {body.model}")
+    tools = []
+    tool_choice = (body.tool_choice.model_dump() if isinstance(body.tool_choice, NamedToolChoice)
+                   else body.tool_choice)
+    if chat:
+        if not body.messages or body.prompt is not None:
+            raise HTTPException(400, "A nonempty messages list is required")
+        try:
+            messages, tools = prepare_tools(
+                [m.model_dump(exclude_none=True) for m in body.messages],
+                [t.model_dump(exclude_none=True) for t in body.tools or []],
+                tool_choice, body.parallel_tool_calls)
+            prompt = render_prompt(runtime["template"],
+                                   messages, body.reasoning_effort, tools)
+        except (ValueError, KeyError) as error:
+            raise HTTPException(400, str(error)) from error
+    else:
+        if body.tools or tool_choice not in (None, "none", "auto"):
+            raise HTTPException(400, "Function tools require /v1/chat/completions")
+        if not body.prompt or body.messages is not None:
+            raise HTTPException(400, "A nonempty string prompt is required")
+        prompt = body.prompt
+    ids = runtime["tokenizer"].encode(prompt, encode_special_tokens=True)
+    prompt_tokens = ids.shape[-1]
+    limit = body.max_completion_tokens or body.max_tokens
+    if body.min_tokens > limit:
+        raise HTTPException(400, "min_tokens exceeds the output limit")
+    context_length = runtime["context_length"]
+    if prompt_tokens + limit > context_length:
+        raise HTTPException(400, f"Prompt ({prompt_tokens}) + output ({limit}) exceeds context {context_length}")
+    stops = list(runtime["config"].eos_token_id_list)
+    if not body.ignore_eos and not body.min_tokens:
+        stops += ["<|user|>", "<|observation|>"]
+    stops += [body.stop] if isinstance(body.stop, str) else (body.stop or [])
+    if any(not stop for stop in stops):
+        raise HTTPException(400, "Stop strings must not be empty")
+    sampler = (GreedySampler() if body.temperature == 0 and body.frequency_penalty == 0
+               and body.presence_penalty == 0 else ComboSampler(
+                   temperature=body.temperature, top_p=body.top_p,
+                   freq_p=body.frequency_penalty, pres_p=body.presence_penalty))
+    lock = runtime["lock"]
+    try:
+        admission_wait = await runtime["admission"].acquire(lock, request)
+    except AdmissionError as error:
+        raise HTTPException(error.status, str(error))
+    try:
+        if runtime["generator"].error:
+            raise HTTPException(503, "Generation engine failed; restart the service")
+        job = AsyncJob(runtime["generator"], input_ids=ids, max_new_tokens=limit,
+                       min_new_tokens=limit if body.ignore_eos else body.min_tokens,
+                       stop_conditions=stops, sampler=sampler, seed=body.seed,
+                       decode_special_tokens=True)
+    except Exception:
+        lock.release()
+        raise
+    ident = ("chatcmpl-" if chat else "cmpl-") + uuid.uuid4().hex
+    created = int(time.time())
+    splitter = ReasoningSplitter() if chat else None
+    tool_splitter = ToolSplitter(tools, body.parallel_tool_calls) if tools else None
+    collected = {"content": "", "reasoning_content": ""}
+    usage = {"prompt_tokens": prompt_tokens, "completion_tokens": 0, "total_tokens": prompt_tokens}
+    reason = "stop"
+    timings = {"http_queue_ms": admission_wait * 1000}
+
+    def envelope(choices, streaming=False):
+        return {"id": ident, "object": ("chat.completion.chunk" if streaming else "chat.completion")
+                if chat else "text_completion", "created": created, "model": MODEL_ID, "choices": choices}
+
+    def event(payload):
+        return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+    async def results():
+        nonlocal reason
+        try:
+            if body.stream and chat:
+                yield envelope([{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}], True)
+            async for result in job:
+                if await request.is_disconnected():
+                    return
+                if result["stage"] != "streaming":
+                    continue
+                text = stream_text(result, runtime["tokenizer"])
+                delta = splitter.feed(text, final=result["eos"]) if chat else {"content": text}
+                deltas = []
+                if "reasoning_content" in delta:
+                    deltas.append({"reasoning_content": delta["reasoning_content"]})
+                if tool_splitter:
+                    deltas.extend(tool_splitter.feed(delta.get("content", ""), final=result["eos"],
+                                  truncated=result.get("eos_reason") == "max_new_tokens"))
+                elif "content" in delta:
+                    deltas.append({"content": delta["content"]})
+                for delta in deltas:
+                    for key in ("content", "reasoning_content"):
+                        collected[key] += delta.get(key, "")
+                    if body.stream:
+                        choice = {"index": 0, "finish_reason": None}
+                        choice.update({"delta": delta} if chat else {"text": delta.get("content", "")})
+                        yield envelope([choice], True)
+                if result["eos"]:
+                    reason = "length" if result.get("eos_reason") == "max_new_tokens" else "stop"
+                    usage["completion_tokens"] = int(result["new_tokens"])
+                    usage["total_tokens"] = prompt_tokens + usage["completion_tokens"]
+                    for native, public in [("time_prefill", "prompt_ms"),
+                                           ("time_generate", "predicted_ms"),
+                                           ("time_enqueued", "queue_ms")]:
+                        if result.get(native) is not None:
+                            timings[public] = result[native] * 1000
+                    cached_tokens = min(prompt_tokens, max(0, int(result.get("cached_tokens", 0))))
+                    usage["prompt_tokens_details"] = {"cached_tokens": cached_tokens}
+                    timings.update(prompt_n=prompt_tokens, predicted_n=usage["completion_tokens"],
+                                   source="exllamav3", cached_tokens=cached_tokens, cache_n=cached_tokens)
+                    if runtime["draft_options"].record_stats:
+                        timings["draft_stats"] = summarize_draft_stats(job.job.draft_stats)
+                    if result.get("accepted_draft_tokens") is not None:
+                        accepted = result["accepted_draft_tokens"]
+                        drafted = accepted + result.get("rejected_draft_tokens", 0)
+                        usage.update(draft_tokens=drafted, draft_tokens_accepted=accepted)
+                        timings.update(draft_n=drafted, draft_n_accepted=accepted)
+            if tool_splitter and tool_splitter.calls and reason != "length":
+                reason = "tool_calls"
+            if reason != "length" and (tool_choice == "required" or isinstance(tool_choice, dict)):
+                if not tool_splitter or not tool_splitter.calls:
+                    raise ValueError("Model did not produce the requested function call")
+            if body.stream:
+                choice = {"index": 0, "finish_reason": reason}
+                choice.update({"delta": {}} if chat else {"text": ""})
+                yield {**envelope([choice], True), "timings": timings}
+                if (body.stream_options or {}).get("include_usage"):
+                    yield {**envelope([], True), "usage": usage}
+        finally:
+            try:
+                # StreamingResponse cancels its AnyIO scope on disconnect.
+                # Keep the request lock until the current GPU step finishes and
+                # the native job/page table is safely removed.
+                with anyio.CancelScope(shield=True):
+                    await job.cancel()
+            finally:
+                lock.release()
+
+    if body.stream:
+        async def stream():
+            try:
+                async for payload in results():
+                    yield event(payload)
+                yield "data: [DONE]\n\n"
+            except Exception as error:
+                print(f"Generation failed: {error!r}", flush=True)
+                traceback.print_exception(error)
+                oom = "out of memory" in str(error).lower()
+                yield event({"error": {"message": "GPU memory exhausted; see service log" if oom
+                                       else "Generation failed; see service log",
+                                       "type": "server_error", "code": "out_of_memory" if oom else "generation_failed"}})
+        return StreamingResponse(stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    try:
+        async for _ in results():
+            pass
+    except Exception as error:
+        print(f"Generation failed: {error!r}", flush=True)
+        traceback.print_exception(error)
+        raise HTTPException(500, "Generation failed; see service log") from error
+    choice = {"index": 0, "finish_reason": reason}
+    choice.update({"message": {"role": "assistant", **collected}} if chat
+                  else {"text": collected["content"], "logprobs": None})
+    if chat and tool_splitter and tool_splitter.calls:
+        choice["message"]["tool_calls"] = tool_splitter.calls
+    return {**envelope([choice]), "usage": usage, "timings": timings}

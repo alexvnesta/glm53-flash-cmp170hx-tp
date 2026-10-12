@@ -1,0 +1,201 @@
+Subject: Generator: hybrid (long suffix-match) drafting as an instance wrapper
+
+New file exllamav3/generator/hybrid_draft.py: a port of upstream dev's hybrid draft mode (e72a906d69, "Drafting:
+Add hybrid draft mode", -hdt), packaged as install_hybrid_drafting(generator, hybrid_draft_tokens). It wraps the
+generator instance's drafting method instead of editing generator.py, job.py and model_init.py. When a job's
+current suffix has an earlier match of at least H tokens whose continuation agrees with the regular draft, the
+round's draft becomes that H-token continuation, and all rows are padded to H for the rectangular verify pass.
+The differences from upstream are listed in the module docstring.
+
+diff --git a/exllamav3/generator/hybrid_draft.py b/exllamav3/generator/hybrid_draft.py
+new file mode 100644
+index 0000000..f617b33
+--- /dev/null
++++ b/exllamav3/generator/hybrid_draft.py
+@@ -0,0 +1,186 @@
++"""
++Hybrid drafting: long suffix-match drafts over the regular drafter, installed on one Generator instance.
++
++Port of upstream ExLlamaV3 dev e72a906d69 "Drafting: Add hybrid draft mode" (-hdt; unchanged up to dev 2caf277),
++packaged as a wrapper so that generator.py, job.py and model_init.py stay byte-identical: the GLM service pins their
++hashes (ConcurrentRing, the vision path). Every round, after the regular drafter has drafted, each decoding job's
++suffix automaton is consulted; when the longest match of the job's current suffix against its earlier context is at
++least H tokens, and the H tokens that followed that earlier occurrence agree with the regular draft over the
++positions it covers, the round's draft becomes those H tokens. The verify pass is rectangular, so when one row
++takes the long draft every row is padded to H (its regular draft, then whatever continuation its own match offers,
++then repeats of its last token; verification rejects padding at the first mismatch). Lossless like any draft: the
++target samples every position and accepts only exact matches.
++
++Differences from upstream, all local to this module:
++  - The wrapper replaces the drafting method on the instance (iterate_draftmodel_dflash_gen and siblings), not the
++    iterate() call site; iterate_gen and its call are untouched.
++  - The per-job suffix automaton is kept here (weakly keyed by job), not in Job.sam.
++  - Upstream reserves one H window past every job's limit (Job.prepare_for_queue budget). Here the budget is
++    unchanged and a round takes the long draft only if every row has allocated pages for H + 1 positions, so the
++    last few rounds before a job's limit use the regular draft. Requeue thresholds and page counts are unchanged.
++  - Draft ids outside [0, vocab_size) are never proposed (a multimodal placeholder id in the context).
++  - Only single-sequence jobs; a round with a multi-sequence job keeps the regular draft.
++  - Recurrent targets: the cache must have been built with max_history >= H (model_init.init(min_draft_len = H)),
++    since a verify pass of H + 1 rows is rolled back like any speculative pass.
++"""
++
++from __future__ import annotations
++import weakref
++import torch
++from ..constants import PAGE_SIZE
++
++_DRAFTERS = ("iterate_draftmodel_dflash_gen", "iterate_draftmodel_mtp_gen", "iterate_draftmodel_gen", "iterate_ngram_gen")
++
++
++def _default_sam():
++    from ..ext import exllamav3_ext as ext
++    return ext.BC_SAM()
++
++
++class HybridDrafting:
++
++    def __init__(self, generator, hybrid_draft_tokens: int, sam_factory = None):
++        g = generator
++        H = hybrid_draft_tokens
++        if type(H) is not int or H <= 0:
++            raise ValueError("hybrid_draft_tokens must be a positive int")
++        if getattr(g, "_hybrid_drafting", None) is not None:
++            raise ValueError("Hybrid drafting is already installed on this generator")
++        if g.dflash_draft:
++            name = "iterate_draftmodel_dflash_gen"
++        elif g.mtp_draft:
++            name = "iterate_draftmodel_mtp_gen"
++        elif g.draft_model is not None:
++            name = "iterate_draftmodel_gen"
++        elif g.ngram_match_min:
++            name = "iterate_ngram_gen"
++        else:
++            raise ValueError("Hybrid drafting rides on a regular drafting mode (draft model or n-gram)")
++        if H <= g.num_draft_tokens:
++            raise ValueError(f"hybrid_draft_tokens ({H}) must exceed the regular draft window ({g.num_draft_tokens})")
++        if g.recurrent_cache is not None and H > g.cache.max_history:
++            raise ValueError(
++                f"Hybrid drafts of {H} tokens need a cache with max_history >= {H} on a recurrent model (this "
++                f"cache has max_history = {g.cache.max_history}); pass min_draft_len = {H} to model_init.init"
++            )
++        if name in vars(g):
++            raise ValueError(f"Generator.{name} is already overridden on this instance")
++        self.generator = weakref.ref(g)
++        self.H = H
++        self.vocab = g.model.config.vocab_size
++        self.sam_factory = sam_factory or _default_sam
++        self.sams = weakref.WeakKeyDictionary()
++        self.method = name
++        # Statistics (rounds verified with the long draft; rounds a qualifying draft gave up for lack of pages)
++        self.rounds = 0
++        self.capacity_skips = 0
++
++        regular = getattr(g, name)
++        def drafting(results):
++            return self.substitute(regular(results))
++        setattr(g, name, drafting)
++        g._hybrid_drafting = self
++
++
++    def uninstall(self):
++        g = self.generator()
++        if g is not None and getattr(g, "_hybrid_drafting", None) is self:
++            delattr(g, self.method)
++            del g._hybrid_drafting
++
++
++    def stats(self) -> dict:
++        return {"hybrid_draft_tokens": self.H, "hybrid_rounds": self.rounds,
++                "hybrid_capacity_skips": self.capacity_skips, "hybrid_automata": len(self.sams)}
++
++
++    def continuation(self, job, length: int):
++        """
++        Continuation of the longest suffix match: (tokens, match length), up to `length` tokens following the
++        earlier occurrence of the job's longest current suffix (upstream Job.get_hybrid_draft). The automaton only
++        accepts new tokens and rebuilds itself when the sequence shrank.
++        """
++        seq = job.sequences[0].sequence_ids.torch()
++        sam = self.sams.get(job)
++        if sam is None:
++            sam = self.sams[job] = self.sam_factory()
++        beg, end = sam.accept_tensor(seq)
++        if end <= beg:
++            return torch.empty((1, 0), dtype = torch.long), 0
++        # The match sits `lag` tokens behind the present, so the continuation in the buffer is at most that
++        # long. A match longer than its lag means the sequence is periodic over it ("A B C A B C A B"), and the
++        # same rule that found it (x[n] = x[n - lag]) extends the continuation past the buffer by repeating
++        # the lag window; a match against distant context has a lag beyond `length` and tiles nothing
++        cont = seq[:, end:]
++        lag = cont.shape[-1]
++        if lag < length:
++            cont = cont.repeat(1, -(-length // lag))
++        cont = cont[:, :length]
++        invalid = (cont[0] < 0) | (cont[0] >= self.vocab)
++        if invalid.any():
++            cont = cont[:, : int(invalid.int().argmax())]
++        return cont, end - beg
++
++
++    def substitute(self, draft_tokens: torch.Tensor | None):
++        """
++        The round's draft, or H tokens of suffix-match continuation per row when some row qualifies (upstream
++        Generator.iterate_hybrid_gen). Returns the regular draft object itself when nothing fires.
++        """
++        g = self.generator()
++        H = self.H
++        jobs = [job for job in g.active_jobs if job.is_prefill_done()]
++        if not jobs or any(len(job.sequences) != 1 for job in jobs):
++            return draft_tokens
++        rows = []
++        fire = False
++        for i, job in enumerate(jobs):
++            short = draft_tokens[i : i + 1] if draft_tokens is not None else None
++            long, matched = self.continuation(job, H)
++            # A qualifying row: a match of at least H tokens, H tokens following it, and no disagreement with
++            # the regular drafter over the positions it covers
++            ok = matched >= H and long.shape[-1] == H
++            if ok and short is not None and short.shape[-1] and not torch.equal(long[:, :short.shape[-1]], short):
++                ok = False
++            fire = fire or ok
++            rows.append((ok, short, long))
++        if not fire:
++            return draft_tokens
++
++        # Every row writes H + 1 positions; take the long draft only where the job's pages already hold them
++        # (upstream instead enlarges every job's page budget by H)
++        for job in jobs:
++            seq = job.sequences[0]
++            if seq.kv_position + H + 1 > len(seq.allocated_pages) * PAGE_SIZE:
++                self.capacity_skips += 1
++                return draft_tokens
++
++        out = torch.empty((len(jobs), H), dtype = torch.long)
++        for i, (ok, short, long) in enumerate(rows):
++            if ok:
++                out[i] = long[0]
++                continue
++            parts = []
++            if short is not None and short.shape[-1]:
++                parts.append(short[0])
++            if long.shape[-1]:
++                parts.append(long[0])
++            fill = torch.cat(parts) if parts else jobs[i].sequences[0].sequence_ids.torch()[0, -1:]
++            fill = fill[:H]
++            out[i, : fill.shape[-1]] = fill
++            out[i, fill.shape[-1] :] = fill[-1]
++        out.masked_fill_((out < 0) | (out >= self.vocab), 0)
++        # The regular drafter's confidence record no longer describes the verified window
++        g._draft_conf_round = None
++        self.rounds += 1
++        return out
++
++
++def install_hybrid_drafting(generator, hybrid_draft_tokens: int, sam_factory = None) -> HybridDrafting:
++    """
++    Enable hybrid drafting on an idle Generator (see the module docstring). Returns the controller; its stats()
++    report rounds that verified a long draft. uninstall() restores the generator's own drafting method.
++    """
++    if generator.num_remaining_jobs():
++        raise ValueError("Install hybrid drafting on an idle generator")
++    return HybridDrafting(generator, hybrid_draft_tokens, sam_factory)
