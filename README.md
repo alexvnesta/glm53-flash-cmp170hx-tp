@@ -82,6 +82,13 @@ Any OpenAI-compatible client works with base URL `http://127.0.0.1:8012/v1` and 
 
 Ready-made clients: [examples/](examples) (curl chat, streaming, tool call round trip, image question).
 
+## Deployed GLM versus Qwen
+
+The dated [comparison](docs/GLM_QWEN_COMPARISON_2026-10-14.md) records throughput,
+cold-prefill latency and the 92-scenario tool suite. GLM scored 90/100 and Qwen
+85/100 at backend defaults; both failed the benchmark safety gate. Rate units,
+limited cells and effort application are explicit in the report.
+
 ## Settings
 
 `scripts/run_tp.sh` reads these environment variables:
