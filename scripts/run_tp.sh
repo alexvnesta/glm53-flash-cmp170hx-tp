@@ -14,11 +14,17 @@ for f in "$ROOT/engine-src/exllamav3/__init__.py" "$MODELS_DIR/GLM-5.3-Flash-exl
 done
 ls "$ROOT"/native/exllamav3_ext*.so >/dev/null 2>&1 || { echo "missing native/exllamav3_ext*.so (run ./engine/build_native.sh)"; exit 1; }
 
+shopt -s nullglob
+EXT=("$ROOT"/native/exllamav3_ext*.so)
+[ "${#EXT[@]}" = 1 ] || { echo "expected exactly one native extension" >&2; exit 1; }
+if command -v sha256sum >/dev/null; then GLM53_NATIVE_EXT_SHA256=$(sha256sum "${EXT[0]}" | cut -d' ' -f1)
+else GLM53_NATIVE_EXT_SHA256=$(shasum -a 256 "${EXT[0]}" | cut -d' ' -f1); fi
+export GLM53_NATIVE_EXT_SHA256
 export PYTHONPATH="$ROOT/native:$ROOT/engine-src:$ROOT/service/glm"
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}" TORCH_CUDA_ARCH_LIST=8.0
 export EXL3_BC_ATTN=1 EXL3_MLA_KIDX_RING=32 EXL3_INT8_GEMV=0 EXL3_GEMV=0 EXL3_DSA_QC_STAGE=1 EXL3_DSA_QC_STAGE_MIN_R=9
 export EXL3_TP_WORKER_TIMEOUT=300 EXL3_TP_SHARING_STRATEGY=file_descriptor EXL3_AUTOSPLIT_MARGIN_MB=128
-export GLM53_PREFILL_CHUNK_SIZE=2048 GLM53_DYNAMIC_DRAFT=0 GLM53_RECORD_DRAFT_STATS=1 GLM53_TP_ACTIVE_HOST=0 GLM53_K_HCFUSE=1
+export GLM53_PREFILL_CHUNK_SIZE=2048 GLM53_DYNAMIC_DRAFT=0 GLM53_RECORD_DRAFT_STATS=1 GLM53_TP_ACTIVE_HOST=0
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-lo}"   # NCCL bootstrap stays on loopback
 ulimit -n 65536 2>/dev/null || true
@@ -28,10 +34,10 @@ ARGS=(-m "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw" -dm "$MODELS_DIR/GLM-5.3-Flash
   -tpb "$TP_BACKEND" --q8-staging --q8-head-gpu0
   --experimental-concurrent-generation --concurrent-max-sequences 2 --concurrent-fair-gen-rounds 4 --concurrent-fair-chunk-size 512
   --host "$HOST" --port "$PORT"
-  --experimental-b2-session-cache --b2-target-cpu-cache-gib "$RAM_TIER_GIB" --recurrent-cache-gib 4
-  --session-cache-gib 1 --session-cache-max-checkpoints 8 --experimental-b2-shared-prefix)
+  --experimental-b2-session-cache --b2-target-cpu-cache-gib "$RAM_TIER_GIB" --recurrent-cache-gib 5
+  --experimental-b2-shared-prefix)
 if [ "$VISION" = 1 ]; then
-  SANDBOX=bwrap; command -v bwrap >/dev/null || { SANDBOX=auto; echo "note: bwrap not found; image decoding runs under resource limits only"; }
+  SANDBOX=bwrap; command -v bwrap >/dev/null || { echo "vision requires bubblewrap (bwrap); install it or set VISION=0" >&2; exit 1; }
   ARGS+=(--experimental-vision --vision-decode-sandbox "$SANDBOX" --vision-max-image-tokens 6144 --vision-cache-mib 4096
     --vision-max-images 16 --vision-max-request-image-bytes 67108864 --vision-device 0)
 fi

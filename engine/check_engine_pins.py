@@ -45,7 +45,14 @@ def main(argv) -> int:
         return 2
     engine, glm = Path(argv[1]), Path(argv[2])
     failed_required = False
-    for filename, variable, required in TABLES:
+    ring = (glm / "glm_concurrent_ring.py").is_file()
+    native = (glm / "glm_native_concurrency.py").is_file()
+    if ring == native:
+        print("FAIL exactly one concurrency implementation is required (ring or native)")
+        return 1
+    tables = tuple(("glm_native_concurrency.py" if native and filename == "glm_concurrent_ring.py" else filename,
+                    variable, required) for filename, variable, required in TABLES)
+    for filename, variable, required in tables:
         source = glm / filename
         if not source.is_file():
             print(f"SKIP  {filename}: not found")

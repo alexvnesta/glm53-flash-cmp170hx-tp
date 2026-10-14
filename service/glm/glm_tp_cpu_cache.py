@@ -6,7 +6,7 @@ import uuid
 import torch
 import json
 from exllamav3.generator.cpu_cache import CPUPageCache
-from exllamav3.util.tp_lazy_cache import (
+from glm_tp_lazy_cache import (
     mp_tp_lazy_init, mp_tp_lazy_prepare, mp_tp_lazy_drop,
     mp_tp_lazy_store, mp_tp_lazy_fetch, mp_tp_lazy_close,
 )
@@ -17,6 +17,9 @@ class LazyTPTargetCPUPageCache(CPUPageCache):
     # Most page copies one batched transfer RPC may carry while an owner holds a batch open around one native
     # page allocation (begin_transfer_batch). 0 keeps one store/fetch RPC per page, the original path.
     transfer_batch = 0
+    # P16: upstream's page table (allocate_pages, is_resumable) and CPUPageCache._busy read tier.disk_tier, which
+    # only CPUPageCache.__init__ sets; this tier never runs that constructor. No disk tier sits behind it.
+    disk_tier = None
 
     def __init__(self, caches, max_size):
         if len(caches) != 1 or not caches[0].model.loaded_tp:
@@ -260,7 +263,7 @@ class LazyTPTargetCPUPageCache(CPUPageCache):
         ops, self._batch = self._batch, []
         if not ops:
             return
-        from exllamav3.util.tp_lazy_cache import mp_tp_lazy_transfer
+        from glm_tp_lazy_cache import mp_tp_lazy_transfer
         try:
             self._check_owner()
             start = time.perf_counter()

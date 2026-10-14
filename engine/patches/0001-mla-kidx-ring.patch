@@ -1,4 +1,8 @@
-Subject: MLA: optional ring buffer for the DSA indexer key plane (EXL3_MLA_KIDX_RING)
+From 2ff2d89b8a2420b5832d88decf573983ed7a4238 Mon Sep 17 00:00:00 2001
+From: alexvnesta <alex.v.nesta@gmail.com>
+Date: Mon, 12 Oct 2026 21:03:31 -0400
+Subject: [PATCH] MLA: optional ring buffer for the DSA indexer key plane
+ (EXL3_MLA_KIDX_RING)
 
 MLA layers with a k-pool indexer (GLM-5.3) keep a per-token [k || gate] plane (k_idx) next to the pooled keys.
 That plane is only read to rebuild the pools touched by the current forward pass (its own rows plus at most
@@ -15,6 +19,21 @@ twin planes and byte-compares every forward.
 
 The design follows vLLM's Glm5NextTailCache (Apache-2.0; see the comments in cache/mla.py). Local design, no
 upstream counterpart. Test: tests/modules/mla/test_mla_kpool_ring.py.
+
+Port of public-repo engine patch 0003 onto upstream dev 0f685aa9fd (P16). Applied unchanged (git apply,
+model_init.py hunk at offset +14); with dev max_history now includes hybrid_draft_tokens, so -hdt 15 gives
+16-row verifies, the ring maximum.
+---
+ exllamav3/cache/mla.py                       | 229 +++++++++++++++++--
+ exllamav3/model_init.py                      |   6 +
+ exllamav3/modules/attention_fn/bc_attn.py    |   6 +-
+ exllamav3/modules/attention_fn/bc_mla.py     |  45 +++-
+ exllamav3/modules/attention_fn/dsa_triton.py |  16 +-
+ exllamav3/modules/attention_fn/mla_triton.py |  21 +-
+ exllamav3/modules/mla_attn.py                |  57 ++++-
+ tests/modules/mla/test_mla_kpool_ring.py     | 128 +++++++++++
+ 8 files changed, 469 insertions(+), 39 deletions(-)
+ create mode 100644 tests/modules/mla/test_mla_kpool_ring.py
 
 diff --git a/exllamav3/cache/mla.py b/exllamav3/cache/mla.py
 index 53fe0ab..408d832 100644
@@ -416,10 +435,10 @@ index 53fe0ab..408d832 100644
              }
          }
 diff --git a/exllamav3/model_init.py b/exllamav3/model_init.py
-index 04b76ad..f009da6 100755
+index ed126dd..3c28944 100755
 --- a/exllamav3/model_init.py
 +++ b/exllamav3/model_init.py
-@@ -323,6 +323,12 @@ def init(
+@@ -337,6 +337,12 @@ def init(
          cache = None
          draft_cache = None
  
@@ -433,7 +452,7 @@ index 04b76ad..f009da6 100755
      if args.gpu_split is None or args.gpu_split == "auto":
          split = None
 diff --git a/exllamav3/modules/attention_fn/bc_attn.py b/exllamav3/modules/attention_fn/bc_attn.py
-index 15d6c5a..f316021 100644
+index e417e20..201a533 100644
 --- a/exllamav3/modules/attention_fn/bc_attn.py
 +++ b/exllamav3/modules/attention_fn/bc_attn.py
 @@ -489,11 +489,13 @@ class BCAttn:

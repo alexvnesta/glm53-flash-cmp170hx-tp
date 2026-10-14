@@ -23,13 +23,13 @@ class TPLifecycle(unittest.IsolatedAsyncioTestCase):
             loaded_tp=False
             def unload(self):step('draft_unload')
         class Async:
-            generator=NS(_glm_dflash_prefix_cache=NS(close=lambda:step('manager_close')))
+            generator=NS()
             async def close(self):step('async_close')
         return events,Model(),Draft(),Async()
     async def test_explicit_order(self):
         events,model,draft,g=self.objects()
         await close_tp_service(model,draft,g)
-        self.assertEqual(events,['async_close','manager_close','drain','target_unload','draft_unload'])
+        self.assertEqual(events,['async_close','drain','target_unload','draft_unload'])
     async def test_startup_failure_before_generator_still_unloads(self):
         events,model,draft,g=self.objects()
         with self.assertRaisesRegex(ValueError,'startup'):
@@ -43,8 +43,8 @@ class TPLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn('target_unload',str(caught.exception.__notes__))
         self.assertEqual(events[-1],'draft_unload')
     async def test_clean_shutdown_surfaces_cleanup_failure(self):
-        events,model,draft,g=self.objects('manager_close')
-        with self.assertRaisesRegex(RuntimeError,'manager_close'):
+        events,model,draft,g=self.objects('target_unload')
+        with self.assertRaisesRegex(RuntimeError,'target_unload'):
             async with tp_lifecycle(True,model,draft) as owned:owned['generator']=g
         self.assertEqual(events[-1],'draft_unload')
     async def test_async_failure_still_attempts_native_cleanup(self):
@@ -68,7 +68,7 @@ class TPLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(task.done())
         joined.set()
         with self.assertRaises(asyncio.CancelledError):await task
-        self.assertEqual(events,['join_started','join_complete','manager_close','drain','target_unload','draft_unload'])
+        self.assertEqual(events,['join_started','join_complete','drain','target_unload','draft_unload'])
     async def test_repeated_cancellation_cannot_detach_join(self):
         events,model,draft,g=self.objects()
         joining=asyncio.Event();joined=asyncio.Event()
@@ -85,7 +85,7 @@ class TPLifecycle(unittest.IsolatedAsyncioTestCase):
         events,model,draft,_=self.objects()
         permit=threading.Event();joining=asyncio.Event();loop=asyncio.get_running_loop()
         class Base:
-            def __init__(self):self.generator=NS(_glm_dflash_prefix_cache=None)
+            def __init__(self):self.generator=NS()
             async def close(self):pass
         g=responsive_generator_class(Base)()
         future=g._gpu_worker.submit(permit.wait)

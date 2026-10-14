@@ -11,7 +11,7 @@ import threading
 
 import torch
 from glm_tp_cpu_cache import LazyTPTargetCPUPageCache
-from glm_b2_retention_coordinator import B2Retention, StopSharedGeneration
+from glm_b2_native import B2Retention, StopSharedGeneration
 
 TRANSFER_BATCH_ENV='GLM_B2_TIER_TRANSFER_BATCH'
 DEFAULT_TRANSFER_BATCH=256
@@ -34,7 +34,7 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
         coordinator.check_owner()
         g=coordinator.generator
         # Shared mode captures the tier as its epoch, so it must be configured later.
-        if (not coordinator.attached or coordinator.ring._paired_owner is not coordinator
+        if (not coordinator.attached or coordinator.concurrency._paired_owner is not coordinator
                 or coordinator.tier is not None or coordinator.shared is not None
                 or g.cpu_page_cache is not None
                 or g.pagetable.cpu_tier is not None or g.num_remaining_jobs()
@@ -66,8 +66,8 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
                 or g.num_remaining_jobs() or g.job_serial or pagetable.referenced_pages
                 or pagetable.cpu_tier is not None or g.cpu_page_cache is not None
                 or pagetable.cache is not self.cache or pagetable.max_pages != self.max_pages
-                or pagetable is not self.coordinator.ring.pagetable
-                or pagetable.all_pages is not self.coordinator.ring.all_pages
+                or pagetable is not self.coordinator.concurrency.pagetable
+                or pagetable.all_pages is not self.coordinator.concurrency.all_pages
                 or len(pagetable.all_pages)!=self.max_pages
                 or any(p.pagetable is not pagetable or p.page_index!=i
                        for i,p in enumerate(pagetable.all_pages))):
@@ -103,7 +103,7 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
             return super()._check_transfer_owner()
         # Batched pages: the full proof ran at the batch's first page and runs again before each send.
         c=self.coordinator
-        if c.closed or c.failure is not None or c.pairs.terminal:
+        if c.closed or c.failure is not None:
             raise StopSharedGeneration('B2 paired coordinator is terminal or closed') from c.failure
         if self.closed or self.thread!=threading.get_ident():
             c._terminal(ValueError('B2 target page transfer left its fixed native step thread'))

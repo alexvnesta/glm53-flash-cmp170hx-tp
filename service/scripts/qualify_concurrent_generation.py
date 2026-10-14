@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded actual-batching client. Run it only in a guarded trial.
+"""Bounded actual-batching client. Root executes it only in a guarded trial.
 
 Records raw HTTP/SSE/health and per-request choices; no service mutation. A
 passing semantic/lifecycle scope is separate from whole-choice equivalence.

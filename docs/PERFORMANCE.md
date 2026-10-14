@@ -1,3 +1,5 @@
+> Historical measurements from earlier profiles. The native-SWA rebase measurements and qualification limits are in [the October 13 qualification](QUALIFICATION_2026-10-13.md); use the root README for the current recipe.
+
 # Performance: GLM-5.3-Flash on 2× CMP 170HX 64 GB
 
 All numbers were measured on one machine on 2026-10-12, mostly at temperature 0, unless marked *(reported)*. Speculative-decoding speed depends on how predictable the text is.

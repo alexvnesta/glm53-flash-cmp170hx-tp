@@ -2,7 +2,8 @@
 """OpenAI-compatible text API for the existing GLM EXL3/MTP installation.
 
 One request runs at a time by default. Explicit experimental concurrency uses
-separate draft rings and the native continuously batched target verifier.
+upstream's per-job sliding-window draft state and the native continuously
+batched target verifier.
 The model's own Jinja chat template is used without requiring transformers.
 """
 import argparse
@@ -30,9 +31,10 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from glm_profile import CONTEXT_RESERVE, MODEL_CONTEXT_LIMIT, MODEL_ID, PORT, GENERATION_DEFAULTS
 from glm_tools import prepare_tools, ToolSplitter, names_strict
-from glm_paths import KERNELS_DIR, HCFUSE_ENV, HCFUSE_CHECK_ENV
 from glm_session_options import session_options
-from glm_tp_options import tp_dflash_options, tp_dflash_health
+from glm_tp_options import (tp_dflash_options, tp_dflash_health, add_tp_dflash_argument, require_native_tp_dflash,
+                            require_tp_dflash_attached)
+import glm_tp_runtime
 from glm_tp_lifecycle import tp_lifecycle
 from glm_dflash_options import DFlashOptions, summarize_draft_stats
 from glm_concurrent_options import concurrent_options, CapacityGate
@@ -121,7 +123,7 @@ EFFORT_MAPPING = ", ".join(f"{name}->{level}" for name, level in EFFORT_NAMES.it
 EFFORT_HELP = (f"Thinking effort (default {GENERATION_DEFAULTS['reasoning_effort']}). Case-insensitive; "
                f"accepted names map as {EFFORT_MAPPING}. Thinking cannot be disabled. "
                f"An explicit value overrides the effort of a {MODEL_ID}-<level> model alias.")
-# Some clients (e.g. pi-ai with thinkingFormat deepseek) send thinking={"type": "enabled"|"disabled"}; vLLM-style servers accept adaptive/auto too.
+# DSH/pi-ai (thinkingFormat deepseek) sends thinking={"type": "enabled"|"disabled"}; vLLM-style servers accept adaptive/auto too.
 THINKING_TYPES = ("enabled", "disabled", "adaptive", "auto")
 # For clients that can only pick a model name: "<MODEL_ID>-<level>" is the same model at that effort.
 MODEL_ALIASES = {f"{MODEL_ID}-{level}": level for level in EFFORT_LEVELS}
@@ -163,7 +165,7 @@ class CompletionRequest(BaseModel):
     stream_options: dict | None = None
     ignore_eos: bool = Field(default=False, strict=True)
     min_tokens: int = Field(default=0, ge=0, le=MODEL_CONTEXT_LIMIT)
-    # pi-ai-style clients send store=false for OpenAI chat requests. This API does not
+    # DSH/pi-ai sends store=false for OpenAI chat requests. This API does not
     # persist completions; reject an explicit storage request before generation.
     store: bool | None = Field(default=False, strict=True)
     reasoning_effort: Literal["low", "high", "max"] = Field(
@@ -259,6 +261,10 @@ async def lifespan(app):
     serving_chunk_size = prefill_chunk_size(args)
     concurrency = concurrent_options(args, serving_chunk_size)
     tp_opt_in = tp_dflash_options(args)
+    # P16: TP worker timeout and sharing strategy (engine patch 0005 before) are service settings now
+    tp_settings = glm_tp_runtime.install() if getattr(args, "tensor_parallel", False) else None
+    if tp_opt_in:
+        require_native_tp_dflash()
     retention = session_options(args)
     b2_retention = b2_retention_options(args, concurrency, retention)
     from glm_b2_options import context_cap_option, cache_geometry
@@ -280,34 +286,44 @@ async def lifespan(app):
     dflash = bool(args.draft_model_dir) and not args.mtp
     if not dflash and (draft_options.adaptive or draft_options.record_stats):
         raise ValueError("DFlash diagnostics/options require a DFlash2 drafter")
+    hybrid = getattr(args, "hybrid_draft_tokens", 0) or 0
+    from exllamav3.generator.generator import Generator
+    if hybrid:
+        import inspect
+        if "hybrid_draft_tokens" not in inspect.signature(Generator.__init__).parameters:
+            raise ValueError("--hybrid-draft-tokens needs an engine Generator with upstream hybrid drafting (e72a906)")
     if dflash:
-        from glm_dflash import bounded_draft_cache, pin_drafter
+        from glm_dflash import pin_drafter
         if concurrency.enabled:
-            from glm_concurrent_ring import install_concurrent_rings
-            install_concurrent_rings(concurrency.max_sequences)
-        else:
-            bounded_draft_cache()
+            from exllamav3.generator.job import Job
+            from glm_concurrent_options import require_fair_scheduling
+            require_fair_scheduling(Generator, Job)
+            # P16: the recurrent replay quarantine (engine patch 0004(b) before) is installed by the service
+            import glm_replay_quarantine
+            glm_replay_quarantine.install()
+            # P16 stage 2: upstream's native sliding-window draft state (concurrent_options refuses -swa_full)
+            from glm_native_concurrency import install_native_concurrency
+            install_native_concurrency(concurrency.max_sequences)
+        elif getattr(args, "swa_full", False):
+            # P16: the single-sequence draft ring (bounded_draft_cache) is gone; upstream's sliding-window draft
+            # state bounds the drafter instead, and -swa_full would allocate the full paged draft cache
+            raise ValueError("Single-sequence DFlash2 uses upstream's bounded sliding-window draft state; drop -swa_full")
         pin_drafter(0 if getattr(args, "q8_head_gpu0", False) else 1)
     method = "DFlash2 EXL3 6bpw K7" if dflash else "MTP d2"
-    print(f"Loading GLM: GPU 0+1, full VRAM, {method} + k_hcfuse", flush=True)
-    # Hybrid drafting: a hybrid draft verifies up to H + 1 rows, so the recurrent (KDA) history and the k_idx ring check
-    # must see H; min_draft_len is the existing model_init hook for that. Unset, the call is unchanged
-    hybrid = getattr(args, "hybrid_draft_tokens", 0) or 0
+    print(f"Loading GLM: GPU 0+1, full VRAM, {method}", flush=True)
+    # P15b/P16: a hybrid draft verifies up to H + 1 rows, so the recurrent (KDA) history and the C1-R k_idx ring check
+    # must see H. Upstream model_init folds args.hybrid_draft_tokens (dest of both -hdt and --hybrid-draft-tokens)
+    # into max_history itself
     model, config, cache, tokenizer, draft_model, _, draft_cache = model_init.init(
-        args, quiet=True, progress=False, **({"min_draft_len": hybrid} if hybrid else {}))
+        args, quiet=True, progress=False)
     async with tp_lifecycle(tp_opt_in, model, draft_model) as owned_tp:
         if tp_opt_in:
-            if (not model.loaded_tp or draft_model is None
-                    or getattr(draft_model.config, "experimental_tensor_parallel", False) is not True):
-                raise ValueError("The engine did not enable the requested typed TP DFlash2 configuration")
-        sys.path.insert(0, str(KERNELS_DIR))
-        import k_hcfuse
-        k_hcfuse.install(model)
+            if not model.loaded_tp or draft_model is None:
+                raise ValueError("The engine did not load the requested TP target with a DFlash2 drafter")
+        runtime["tp_runtime"] = None if tp_settings is None else glm_tp_runtime.verify(model, tp_settings)
         if dflash:
             if not draft_model.caps.get("dflash_draft") or draft_model.config.block_size != 8:
                 raise ValueError("This API requires a DFlash2 block-size-8 drafter")
-            from glm_dflash import preserve_fused_exports
-            preserve_fused_exports(model)
         env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True,
                                            extensions=["jinja2.ext.loopcontrols"])
         env.filters["tojson"] = lambda value, **kwargs: json.dumps(value, **kwargs)
@@ -325,7 +341,7 @@ async def lifespan(app):
             from glm_concurrent_async import concurrent_generator_class
             generator_class = concurrent_generator_class(generator_class)
             if b2_retention.enabled:
-                from glm_b2_retention_coordinator import paired_async_generator_class
+                from glm_b2_native import paired_async_generator_class
                 generator_class = paired_async_generator_class(generator_class)
         runtime["generator"] = generator_class(
             model=model, cache=cache, tokenizer=tokenizer, sampler=GreedySampler(),
@@ -333,24 +349,27 @@ async def lifespan(app):
             num_draft_tokens=args.num_draft_tokens, max_batch_size=concurrency.max_sequences,
             max_chunk_size=serving_chunk_size, recurrent_checkpoint_interval=2048,
             recurrent_cache_size=retention.recurrent_bytes,
+            # P16: upstream hybrid drafting (e72a906) in the engine generator replaces the P15b wrapper
+            **({"hybrid_draft_tokens": hybrid} if hybrid else {}),
             **concurrency.generator_kwargs(),
             **draft_options.generator_kwargs(num_draft_tokens=args.num_draft_tokens))
-        if hybrid:
-            # Wraps this generator's DFlash drafting method only; iterate_gen and the engine files are untouched
-            from exllamav3.generator.hybrid_draft import install_hybrid_drafting
-            install_hybrid_drafting(runtime["generator"].generator, hybrid)
         if tp_opt_in:
             owned_tp["generator"] = runtime["generator"]
+        native = runtime["generator"].generator
+        from glm_concurrent_options import check_fair_scheduling
+        check_fair_scheduling(native, concurrency)
+        if getattr(native, "hybrid_draft_tokens", 0) != hybrid:
+            raise ValueError("The engine Generator did not apply --hybrid-draft-tokens")
+        if tp_opt_in:
+            require_tp_dflash_attached(native)
         if concurrency.enabled:
-            from glm_concurrent_ring import bind_concurrent_rings
-            bind_concurrent_rings(runtime["generator"].generator, concurrency.max_sequences,
-                                  **({"allow_embeddings": True, "drop_embeddings": not vision.keep_embeddings}
-                                     if vision.enabled else {}))
+            from glm_native_concurrency import bind_native_concurrency
+            bind_native_concurrency(runtime["generator"].generator, concurrency.max_sequences,
+                                    **({"allow_embeddings": True, "drop_embeddings": not vision.keep_embeddings}
+                                       if vision.enabled else {}))
             if b2_retention.enabled:
-                from glm_b2_retention_coordinator import bind_b2_retention
-                paired = bind_b2_retention(runtime["generator"].generator,
-                    max_bytes=b2_retention.paired_bytes,
-                    max_checkpoints=b2_retention.max_checkpoints)
+                from glm_b2_native import bind_b2_retention
+                paired = bind_b2_retention(runtime["generator"].generator)
                 if b2_retention.target_cpu_bytes:
                     from glm_b2_cpu_cache import attach_b2_target_tier
                     attach_b2_target_tier(paired, b2_retention.target_cpu_bytes)
@@ -358,25 +377,6 @@ async def lifespan(app):
                 if b2_retention.shared_prefix_tokens:
                     paired.configure_shared_chat(b2_retention.shared_prefix_tokens, template, tokenizer, render_prompt)
         runtime["draft_options"] = draft_options
-        if retention.enabled:
-            if tp_opt_in:
-                from glm_tp_sessions import enable_session_cache
-            else:
-                from glm_dflash_sessions import enable_session_cache
-            enable_session_cache(runtime["generator"].generator,
-                                 max_bytes=retention.paired_bytes,
-                                 max_checkpoints=retention.max_checkpoints,
-                                 target_cpu_bytes=retention.target_cpu_bytes,
-                                 namespace=str(Path(args.model_dir).resolve()))
-            print("GLM DFlash2: bounded completed-session retention enabled; "
-                  f"target CPU tier ceiling {retention.target_cpu_bytes} bytes (pins only on page eviction)", flush=True)
-        if dflash and getattr(args, "dflash_prefix_cache", False):
-            if tp_opt_in:
-                from glm_tp_prefix import enable_prefix_cache
-            else:
-                from glm_dflash_prefix import enable_prefix_cache
-            enable_prefix_cache(runtime["generator"].generator)
-            print("GLM DFlash2: previous-request prefix cache enabled (paired host snapshots)", flush=True)
         if vision.enabled:
             from glm_vision import Vision, load_tower
             runtime["vision"] = Vision(vision, None, tokenizer)        # probes the decode sandbox before the tower loads
@@ -393,12 +393,7 @@ async def lifespan(app):
             yield
         finally:
             if not tp_opt_in:
-                try:
-                    await runtime["generator"].close()
-                finally:
-                    manager = getattr(runtime["generator"].generator, "_glm_dflash_prefix_cache", None)
-                    if retention.enabled and manager is not None:
-                        manager.close()
+                await runtime["generator"].close()
 
 
 app = FastAPI(title="GLM-5.3-Flash EXL3 API", version="1.0", lifespan=lifespan,
@@ -436,8 +431,7 @@ async def health():
     dflash = (bool(getattr(runtime["args"], "draft_model_dir", None))
               and not getattr(runtime["args"], "mtp", False))
     generator = getattr(runtime["generator"], "generator", runtime["generator"])
-    draft_cache = getattr(generator, "draft_cache", None)
-    prefix_cache = getattr(generator, "_glm_dflash_prefix_cache", None)
+    concurrent = getattr(generator, "_glm_native_concurrency", None) if runtime["concurrency"].enabled else None
     b2_cache = getattr(generator, "_glm_b2_retention", None)
     return {"status": "ok", "engine": "ExLlamaV3", "model": MODEL_ID, "context_length": runtime["context_length"],
             "cache_tokens": runtime["args"].cache_size,
@@ -450,21 +444,24 @@ async def health():
             "recurrent_checkpoint_interval": generator.recurrent_checkpoint_interval,
             "cache_format": cache_format(),
             "q8_staging": getattr(runtime["args"], "q8_staging", False),
+            # P16 stage 2: a sliding-window drafter keeps FP16 window rings whatever -cq sets
             "draft_cache_format": ("FP16" if getattr(runtime["args"], "fp16_draft_cache", False)
-                                   else cache_format()),
+                                   or getattr(generator, "draft_recurrent", False) else cache_format()),
             "output_gpu": 0 if getattr(runtime["args"], "q8_head_gpu0", False) else 1,
             "workspace_margin_mb": int(os.environ.get("EXL3_AUTOSPLIT_MARGIN_MB", "256")),
             "mtp_depth": 0 if dflash else 2,
             "speculative_method": "dflash2" if dflash else "mtp",
             "draft_num_tokens": getattr(runtime["args"], "num_draft_tokens", None) or 2,
-            "hybrid_drafting": (generator._hybrid_drafting.stats()
-                                if getattr(generator, "_hybrid_drafting", None) is not None else None),
+            "hybrid_drafting": hybrid_health(generator),
             "experimental_tp_dflash2": tp_dflash_health(generator),
+            "tp_runtime": runtime.get("tp_runtime"),
+            "native_extension": runtime.get("native_extension"),
             "target_tp": bool(generator.model.loaded_tp),
-            "draft_ring_tokens": getattr(draft_cache, "dflash_ring_tokens", None),
-            "prompt_cache_reuse": not dflash or prefix_cache is not None or b2_cache is not None,
-            "prompt_cache": b2_cache.stats() if b2_cache is not None else (prefix_cache.stats() if prefix_cache is not None else None),
-            "target_cpu_cache_budget_bytes": runtime["b2_retention"].target_cpu_bytes if runtime["b2_retention"].enabled else getattr(runtime["args"], "target_cpu_cache_gib", 0) * 1024**3,
+            # P16 stage 2: rows of each job's native draft window ring (2560; the stage-1 key, kept for one release)
+            "draft_ring_tokens": getattr(concurrent, "draft_state_rows", None),
+            "prompt_cache_reuse": not dflash or b2_cache is not None,
+            "prompt_cache": b2_cache.stats() if b2_cache is not None else None,
+            "target_cpu_cache_budget_bytes": runtime["b2_retention"].target_cpu_bytes if runtime["b2_retention"].enabled else 0,
             "experimental_b2_session_cache": runtime["b2_retention"].enabled,
             "experimental_b2_shared_prefix": bool(runtime["b2_retention"].shared_prefix_tokens),
             "recurrent_cache_budget_bytes": generator.recurrent_cache_size,
@@ -476,7 +473,7 @@ async def health():
             "active_sequences": len(generator.active_jobs),
             "pending_sequences": len(generator.pending_jobs),
             "admitted_requests": runtime["lock"].active if runtime["concurrency"].enabled else int(runtime["lock"].locked()),
-            "concurrent_ring": generator._glm_concurrent_ring.stats() if runtime["concurrency"].enabled else None,
+            "concurrent_ring": concurrent.stats() if concurrent is not None else None,
             "fair_gen_rounds": getattr(generator, "fair_gen_rounds", 1),
             "fair_chunk_size": getattr(generator, "fair_chunk_size", None),
             "busy": runtime["lock"].active > 0 if runtime["concurrency"].enabled else runtime["lock"].locked(),
@@ -484,6 +481,15 @@ async def health():
             **runtime.get("request_body", {}),
             **({"vision": runtime["vision"].health()} if runtime.get("vision") is not None else {}),
             "generation_defaults": GENERATION_DEFAULTS}
+
+
+def hybrid_health(generator):
+    """P15b /health shape from upstream's in-generator counters (the wrapper's capacity skips are gone)."""
+    tokens = getattr(generator, "hybrid_draft_tokens", 0)
+    if not tokens:
+        return None
+    return {"hybrid_draft_tokens": tokens, "hybrid_rounds": getattr(generator, "hybrid_rounds", 0),
+            "implementation": "engine"}
 
 
 class TokenizeRequest(BaseModel):
@@ -675,7 +681,7 @@ async def complete(body, request, chat):
     except BaseException as error:
         lock.release()
         if shared is not None:
-            from glm_b2_retention_coordinator import StopSharedGeneration
+            from glm_b2_native import StopSharedGeneration
             if isinstance(error, StopSharedGeneration):
                 raise runtime["generator"].latch_shared(error) from error
         raise
@@ -809,11 +815,18 @@ async def completions(body: CompletionRequest, request: Request, response: Respo
 
 
 if __name__ == "__main__":
+    # P16: the native build is checked before the first engine import (upstream ext.py would JIT-build one)
+    from glm_native import require_prebuilt_extension
+    try:
+        runtime["native_extension"] = require_prebuilt_extension()
+    except RuntimeError as error:
+        sys.exit(f"glm_api: {error}")
     from exllamav3 import model_init
     import uvicorn
     parser = argparse.ArgumentParser()
     from glm_vision_options import add_vision_arguments, vision_options
     model_init.add_args(parser, cache=True, add_draft_model_args=True, default_chunk_size=2048)
+    add_tp_dflash_argument(parser)
     add_vision_arguments(parser)
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--host", default="0.0.0.0", help="Bind address; use 127.0.0.1 for private qualification")
@@ -827,20 +840,11 @@ if __name__ == "__main__":
                         help="Keep the output projection resident on GPU 0")
     parser.add_argument("--fp16-draft-cache", action="store_true",
                         help="Keep the MTP draft layer cache FP16")
-    parser.add_argument("--dflash-prefix-cache", action="store_true",
-                        help="Opt in to previous-request DFlash prefix reuse with paired host snapshots")
-    parser.add_argument("--dflash-session-cache", action="store_true",
-                        help="Experimental bounded paired prefix retention (LS or explicitly opted-in TP; one active request)")
-    parser.add_argument("--target-cpu-cache-gib", type=int, default=0,
-                        help="Target-only idle page spill ceiling in GiB; 0 disables; pins page slabs only on eviction")
     parser.add_argument("--recurrent-cache-gib", type=int, default=4,
-                        help="Native recurrent checkpoint ceiling in GiB (default unchanged: 4)")
-    parser.add_argument("--session-cache-gib", type=int, default=1,
-                        help="Combined paired native checkpoint/draft snapshot retention ceiling in GiB")
-    parser.add_argument("--session-cache-max-checkpoints", type=int, default=8,
-                        help="Maximum retained paired checkpoint boundaries (at least 2)")
+                        help="Native recurrent checkpoint ceiling in GiB, both sides of every paired checkpoint "
+                             "(default unchanged: 4)")
     parser.add_argument("--experimental-concurrent-generation", action="store_true",
-                        help="Opt in to TP DFlash2 continuous batching with isolated cold draft rings")
+                        help="Opt in to TP DFlash2 continuous batching on upstream's per-job draft window state")
     parser.add_argument("--concurrent-max-sequences", type=int)
     parser.add_argument("--concurrent-fair-gen-rounds", type=int)
     parser.add_argument("--concurrent-fair-chunk-size", type=int)
@@ -853,9 +857,10 @@ if __name__ == "__main__":
     parser.add_argument("--b2-target-cpu-cache-gib", type=int,
                         help="B2-owned lazy inactive target page overflow GiB ceiling;0 disables, maximum8")
     parser.add_argument("--hybrid-draft-tokens", dest="hybrid_draft_tokens", type=int, default=0,
-                        help="Hybrid drafting: when a sequence's suffix matches at least this many tokens of its "
+                        help="P15b hybrid drafting: when a sequence's suffix matches at least this many tokens of its "
                              "earlier context, verify that many tokens of the continuation (on top of DFlash2 K7); "
-                             "0 disables, else 8..15")
+                             "0 disables, else 8..15. Same setting as the engine's -hdt/--hybrid_draft_tokens "
+                             "(same dest), passed to the engine Generator")
     parser.add_argument("--context-cap", type=int, default=None,
                         help="Per-request context ceiling, decoupled from the page pool (-cs); at most 392960. "
                              "A B2 pool above 393216 requires it and the engine k_idx ring (EXL3_MLA_KIDX_RING)")
@@ -863,6 +868,7 @@ if __name__ == "__main__":
     try:
         concurrency = concurrent_options(args, prefill_chunk_size(args))
         tp_dflash_options(args)
+        glm_tp_runtime.settings()
         retention = session_options(args)
         b2_retention_options(args, concurrency, retention)
         from glm_b2_options import context_cap_option
@@ -873,19 +879,14 @@ if __name__ == "__main__":
     if not ((args.mtp and not args.draft_model_dir and args.num_draft_tokens == 2)
             or (not args.mtp and args.draft_model_dir and args.num_draft_tokens == 7)):
         parser.error("Use either --mtp -ndt 2 or -dm <DFlash2 EXL3 6bpw> -ndt 7")
-    # Hybrid drafting qualified envelope: DFlash2 K7, fixed window, 8..15 tokens (a verify pass of at most 16 rows: the CUDA-graph
-    # decode bound and the k_idx ring's KIDX_RING_MAX_QLEN; 7 or fewer cannot improve on K7)
+    # P15b qualified envelope: DFlash2 K7, fixed window, 8..15 tokens (a verify pass of at most 16 rows: the CUDA-graph
+    # decode bound and the C1-R k_idx ring's KIDX_RING_MAX_QLEN; 7 or fewer cannot improve on K7)
     if args.hybrid_draft_tokens:
-        import importlib.util
         if (args.mtp or not args.draft_model_dir or not 8 <= args.hybrid_draft_tokens <= 15
                 or DFlashOptions.from_environment().adaptive):
             parser.error("--hybrid-draft-tokens requires -dm DFlash2 -ndt 7, GLM53_DYNAMIC_DRAFT=0 and a value in 8..15")
-        if importlib.util.find_spec("exllamav3.generator.hybrid_draft") is None:
-            parser.error("--hybrid-draft-tokens requires the engine module exllamav3/generator/hybrid_draft.py")
     if (args.q8_staging or args.q8_head_gpu0 or args.fp16_draft_cache) and args.cache_quant != "8":
         parser.error("Q8 memory options require -cq 8")
-    if args.dflash_prefix_cache and args.mtp:
-        parser.error("--dflash-prefix-cache requires DFlash2; MTP already uses native prefix caching")
     if args.q8_staging and args.autosplit_max_batch_size != 1 and not args.experimental_concurrent_generation:
         parser.error("--q8-staging requires --autosplit_max_batch_size 1")
     try:
@@ -893,6 +894,4 @@ if __name__ == "__main__":
     except ValueError as error:
         parser.error(str(error))
     runtime["args"] = args
-    # k_hcfuse gates itself on this flag; glm_api always calls install() explicitly.
-    os.environ.setdefault(HCFUSE_ENV, "1")
     uvicorn.run(app, host=args.host, port=args.port, timeout_graceful_shutdown=5)

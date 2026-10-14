@@ -1,0 +1,36 @@
+name: Source and response lifecycle
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install HTTP test dependencies
+        run: python -m pip install fastapi==0.115.6 starlette==0.41.3 httpx==0.28.1 anyio==4.15.1
+      - name: Reproduce and verify pinned engine source
+        run: |
+          ./engine/apply_engine.sh
+          ./engine/apply_engine.sh --verify
+      - name: Validate Python and shell syntax
+        run: |
+          python -m compileall -q service scripts engine
+          python - <<'PY'
+          import pathlib, subprocess
+          for folder in ('scripts', 'engine', 'examples', 'service/scripts'):
+              for path in pathlib.Path(folder).glob('*.sh'):
+                  subprocess.run(['bash', '-n', str(path)], check=True)
+          PY
+      - name: Check request admission and streamed cleanup
+        env:
+          PYTHONPATH: service/glm
+        run: |
+          python -m unittest discover -s service/tests/http -v
+          python service/scripts/check_response_lifetime_ast.py

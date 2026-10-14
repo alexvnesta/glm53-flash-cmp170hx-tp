@@ -1,3 +1,5 @@
+> Historical upstream documentation. The current supported recipe is the root README and `scripts/run_tp.sh`; retired layer-split/MTP/cache flags below are not the current tensor-parallel launch configuration.
+
 # GLM-5.3-Flash EXL3 서빙 — 2× 64GB GPU (CMP 170HX / SM80)
 
 P2P 미지원 64GB GPU 두 장(CMP 170HX 등)에서 **GLM-5.3-Flash**를

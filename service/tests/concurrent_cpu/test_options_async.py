@@ -16,7 +16,8 @@ from glm_admission import RequestAdmission,AdmissionPolicy
 def args(**changes):
     values=dict(experimental_concurrent_generation=True, tensor_parallel=True,
                 experimental_dflash2_tp=True,draft_model_dir='synthetic',mtp=False,
-                autosplit_max_batch_size=2,cache_size=393216)
+                autosplit_max_batch_size=2,cache_size=393216,
+                swa_full=False)   # P16 stage 2: native sliding-window draft state; -swa_full is refused
     values.update(changes)
     return NS(**values)
 
@@ -34,9 +35,15 @@ class Options(unittest.TestCase):
                   dict(mtp=True),dict(num_draft_tokens=4),dict(concurrent_max_sequences=True),dict(concurrent_max_sequences=9),
                   dict(concurrent_fair_gen_rounds=0),dict(concurrent_fair_gen_rounds=True),
                   dict(concurrent_fair_chunk_size=257),dict(concurrent_fair_chunk_size=4096),
-                  dict(cache_size=8192)]
+                  dict(swa_full=True)]
         for patch in failures:
             with self.subTest(patch=patch),self.assertRaises(ValueError):concurrent_options(args(**patch),2048)
+    def test_no_ring_capacity_rule_and_serving_chunk_bound(self):
+        # P16 stage 2: the 8192-token-per-sequence ring rule is gone (upstream rings are fixed at load); the
+        # qualified serving chunk bound stays
+        self.assertTrue(concurrent_options(args(cache_size=8192),2048).enabled)
+        with self.assertRaises(ValueError):concurrent_options(args(),4096)
+        self.assertFalse(hasattr(concurrent_options(args(),2048),'ring_tokens_per_sequence'))
     def test_active_host_enabled_refused_without_changing_default_off(self):
         with patch.dict(os.environ,{'GLM53_TP_ACTIVE_HOST':'1'}):
             with self.assertRaises(ValueError):concurrent_options(args(),2048)

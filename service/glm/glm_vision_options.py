@@ -10,9 +10,9 @@ from dataclasses import dataclass
 MIB = 1024 * 1024
 # processor_config.json of the deployed checkpoint: min_image_tokens / max_image_tokens per image.
 MODEL_MIN_IMAGE_TOKENS, MODEL_MAX_IMAGE_TOKENS = 16, 8000
-# Pillow 12.3.0 is the minimum with the decoder-bomb and out-of-bounds fixes this decode path relies on.
+# Pillow 12.3.0 carries the decoder-bomb and out-of-bounds fixes listed in vision/SECURITY.md sec. 2.
 MIN_PILLOW = (12, 3, 0)
-# Option name: (default, minimum, maximum, help). Defaults are conservative starting values; set the token cap and the
+# Option name: (default, minimum, maximum, help). Defaults are Phase 0 proposals; Phase 1 sets the token cap and the
 # cache from measured VRAM and host RAM.
 LIMITS = {
     "vision_max_images": (8, 1, 32, "images per request"),
@@ -50,7 +50,7 @@ class VisionOptions:
     # The decode process must confirm its RLIMIT_AS; only tests on a non-Linux host relax this.
     require_memory_limit: bool = True
     decode_sandbox: str = "none"
-    # Image embeddings are set aside once a job's prompt is prefilled, so decode steps stop carrying them.
+    # P14c: image embeddings are set aside once a job's prompt is prefilled, so decode steps stop carrying them.
     keep_embeddings: bool = False
 
     def body_allowance(self):

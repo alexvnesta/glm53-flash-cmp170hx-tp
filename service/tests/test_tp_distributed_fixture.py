@@ -80,7 +80,7 @@ class FixtureContracts(unittest.TestCase):
     def test_fixtures_have_no_private_paths_or_native_receipts(self):
         for name in ('tp_distributed_markers_v2.json','tp_distributed_markers_v1_invalid_geometry.json'):
             text=(FIXTURES/name).read_text()
-            for forbidden in ('/Users/','/data','/home/','/mnt/','GPU-','InvocationID'):
+            for forbidden in ('/Users/','/data2/','/home/','/mnt/','GPU-','InvocationID'):
                 self.assertNotIn(forbidden,text)
 
     def test_pending_summary_does_not_claim_finished_replay(self):

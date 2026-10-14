@@ -1,10 +1,10 @@
-# ExLlamaV3 (turboderp) -- the engine this repo patches. Read by apply_engine.sh.
+# ExLlamaV3 (turboderp) -- the engine the P16 stage-2 series patches. Read by apply_engine.sh.
 upstream_url: https://github.com/turboderp-org/exllamav3
-base_commit: 3a8e2fb84cda5a87ec700f1e9935b641416b7e2b
+base_commit: 0f685aa9fda3a98a864149b367b7ef570257572e
 
-# base_commit is "KDN/GDA/Mamba: Replace history states with single initial recurrent state + input hidden state,
-# re-advance instead of reverting to checkpoint" (2026-10-09, v1.6.0 plus 42 commits; reachable from dev and master
-# on 2026-10-12). Of the 975 files of the patched tree, 930 have the content of this commit (one of them,
-# solar_open_moe.py, differs only in file mode) and 45 are changed or added by engine/patches. Of the 732 upstream
-# commits since 2026-08-01, this one matches the deployed engine best.
-# License of the upstream code: MIT, Copyright (c) turboderp. See NOTES.md.
+# base_commit is upstream origin/dev on 2026-10-12 ("GDN/Mamba: Fix 4-way split in batched_scan_replay ..."), the same
+# base as the stage-1 port (../../../port/engine/UPSTREAM.txt). The stage-2 series is the stage-1 series unchanged
+# (patches 0001-0003, byte-identical copies of ../../../port/engine/patches) plus 0004, the U1 fix (SWAState
+# stash/unstash index the draft window ring by its fill; stage2/DESIGN.md section A3). Of the 968 files of the stage-2
+# tree, 954 have this commit's content and 14 are changed or added by patches/ (4 patches). License of the upstream
+# code: MIT, Copyright (c) turboderp. See ../../../port/engine/NOTES.md.

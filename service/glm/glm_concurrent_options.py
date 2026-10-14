@@ -23,7 +23,6 @@ class ConcurrentOptions:
     max_sequences: int = 1
     fair_gen_rounds: int = 1
     fair_chunk_size: int | None = None
-    ring_tokens_per_sequence: int = 8192
 
     def generator_kwargs(self):
         return {} if not self.enabled else dict(fair_gen_rounds=self.fair_gen_rounds,
@@ -54,6 +53,10 @@ def concurrent_options(args, serving_chunk):
         raise ValueError("Concurrent profile requires the explicit TP DFlash2 opt-in")
     if getattr(args, 'num_draft_tokens', 7) != 7:
         raise ValueError("Concurrent initial profile requires fixed K7")
+    if getattr(args, "swa_full", False):
+        # P16 stage 2: each job's draft state is upstream's own sliding-window ring (7de419b), checkpointed with the
+        # target as one PairedState; -swa_full would build a pool-sized paged draft cache and no ring state.
+        raise ValueError("Native concurrency uses upstream's sliding-window DFlash2 draft state; drop -swa_full")
     if not getattr(args, "draft_model_dir", None) or getattr(args, "mtp", False):
         raise ValueError("Concurrent profile requires DFlash2")
     if getattr(args, "autosplit_max_batch_size", None) != sequences:
@@ -62,6 +65,30 @@ def concurrent_options(args, serving_chunk):
         raise ValueError("Single-active paired retention cannot be combined with concurrent generation")
     if getattr(args, "target_cpu_cache_gib", 0) or getattr(args, "cpu_cache_size", 0):
         raise ValueError("Concurrent initial profile excludes CPU tiers")
-    if serving_chunk > 2048 or getattr(args, "cache_size", 0) < 8192 * sequences:
-        raise ValueError("Concurrent ring requires serving chunk <=2048 and cache >=8192 tokens per sequence")
+    if serving_chunk > 2048:
+        raise ValueError("Concurrent profile requires a serving chunk of at most 2048 (qualified)")
     return ConcurrentOptions(True, sequences, rounds, chunk)
+
+
+def require_fair_scheduling(generator_class, job_class):
+    """Before load: the engine Generator takes fair_gen_rounds/fair_chunk_size and Job.prefill a chunk size.
+
+    Upstream's Generator(**kwargs) accepts and ignores unknown keyword arguments, so an engine without the fair
+    scheduling patch would start and silently lose it (P16 inventory). Fail loudly instead."""
+    import inspect
+    parameters = inspect.signature(generator_class.__init__).parameters
+    prefill = inspect.signature(getattr(job_class.prefill, "_glm_native", job_class.prefill)).parameters
+    if (any(name not in parameters or parameters[name].kind is inspect.Parameter.VAR_KEYWORD
+            for name in ("fair_gen_rounds", "fair_chunk_size"))
+            or "chunk_size" not in prefill):
+        raise ValueError("The engine Generator does not support fair scheduling (fair_gen_rounds, fair_chunk_size "
+                         "and Job.prefill(chunk_size)); this service needs the P16 fair scheduling engine patch")
+
+
+def check_fair_scheduling(generator, options):
+    """After construction: the generator holds exactly the requested fair scheduling settings."""
+    if not options.enabled:
+        return
+    if (getattr(generator, "fair_gen_rounds", None) != options.fair_gen_rounds
+            or getattr(generator, "fair_chunk_size", None) != options.fair_chunk_size):
+        raise ValueError("The engine Generator did not apply the requested fair scheduling settings")
