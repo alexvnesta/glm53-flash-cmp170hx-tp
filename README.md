@@ -1,7 +1,7 @@
 # GLM-5.3-Flash on 2× CMP 170HX (tensor parallel + vision)
 
 ![cards](https://img.shields.io/badge/GPUs-2%C3%97%20CMP%20170HX%2064%20GB-555)
-![engine](https://img.shields.io/badge/engine-ExLlamaV3%20%40%203a8e2fb-555)
+![engine](https://img.shields.io/badge/engine-ExLlamaV3%20%40%200f685aa-555)
 ![licence](https://img.shields.io/badge/licence-MIT-blue)
 ![status](https://img.shields.io/badge/status-early%2C%20YMMV-orange)
 
@@ -17,19 +17,26 @@ It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm53-fla
 
 ## What you get
 
-| | Flun's original (layer split) | this repo (tensor parallel) |
-|---|---|---|
-| Decode, structured text | 96 tok/s | **~124 tok/s** (hybrid drafting: 134-147 on code edits and JSON) |
-| Decode, hard reasoning | 34 tok/s | **~45 tok/s** |
-| Prefill | ~1.26-1.32K tok/s | **~1.48-1.54K tok/s** (8K-32K prompts) |
-| Requests at once | 1 | **2** (more queue) |
-| Context | 384K | **393K** per request; two ~320K sessions fit together |
-| Idle sessions | re-read on return | **parked in system RAM**, resume in 1-3 s |
-| Repeated system/tool prompt | previous request only (opt-in) | **cached across sessions** (26.8K prefix: 20.8 s → 0.7 s) |
-| Images | no | **yes** (full-HD screenshot ~3.2 s to first token) |
+| Feature or bounded probe | Native-SWA profile |
+|---|---|
+| Counting decode | **129.38 tok/s**; +2.30% versus the installed stage-1 rebase |
+| LRU reasoning decode | **46.77 tok/s**; +0.60% versus stage 1 |
+| Short structured/code/prose probes | **+3.7–5.1%** versus stage 1 |
+| Cold prefill | **1.49–1.53K tok/s**, two requests each at 8K/32K/96K |
+| Two-stream aggregate | **67.25 tok/s**, +7.01% versus stage 1 |
+| Requests at once | **2 active**; more queue |
+| Context | **392,960** tokens including output; shared pool 655,360 |
+| Four idle 220K sessions | Cached restores matched cold outputs; first token in **3.8–4.0s** |
+| Images | GPU0 vision tower, bubblewrap decode, base64 input |
 
-Both columns measured on the same machine (2 cards on PCIe Gen2 x16), this repo with the NCCL backend over GPU P2P. The hybrid-drafting
-figures were measured before the NCCL switch. Details and methods: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+These October 13 measurements used the same machine (PCIe Gen2 x16) and NCCL
+P2P transport in both arms. They are workload-specific, not general task-quality
+claims. Two near-limit 327K requests ran sequentially in the pressure probe.
+Max-effort retrieval was 56/56; mixed-traffic soaks retain known model mistakes.
+Methods, correctness limits and fresh-build checks:
+[qualification](docs/QUALIFICATION_2026-10-13.md).
+Earlier layer-split, hybrid and NCCL comparisons remain in
+[historical performance](docs/PERFORMANCE.md), with credit to Flun's original.
 
 ## What you need
 
@@ -37,7 +44,7 @@ figures were measured before the NCCL switch. Details and methods: [docs/PERFORM
   cards to that state.
 - Linux, an NVIDIA driver with CUDA 13 support, the CUDA 13.x toolkit with `nvcc`, Python **3.13**.
 - **~128 GB system RAM** and **~150 GB disk** for the weights.
-- Optional: `bwrap` (bubblewrap) for the strict image-decoding sandbox.
+- `bwrap` (bubblewrap) for image input. Use `VISION=0` for text-only serving without it.
 
 Tested on: Threadripper 3970X, 128 GB RAM, driver 610.57.04, CUDA 13.3, PyTorch 2.14.1+cu130, Triton 3.8.0.
 
@@ -47,7 +54,7 @@ Tested on: Threadripper 3970X, 128 GB RAM, driver 610.57.04, CUDA 13.3, PyTorch 
 git clone https://github.com/alexvnesta/glm53-flash-cmp170hx-tp.git && cd glm53-flash-cmp170hx-tp
 ./scripts/setup_venv.sh     # Python venv with pinned PyTorch and dependencies
 ./engine/apply_engine.sh    # fetches ExLlamaV3 at the pinned commit, applies the patches, checks every file
-./engine/build_native.sh    # builds the CUDA extension for the CMP's sm_80 (~25 min)
+./engine/build_native.sh    # builds the CUDA extension for the CMP's sm_80 (~15–25 min)
 ./scripts/get_models.sh     # downloads the model (~125 GB) and the drafter, converts the drafter (~tens of minutes)
 .venv/bin/python scripts/p2p_check.py   # optional: checks GPU P2P before using the default NCCL backend
 ./scripts/run_tp.sh         # starts the API on 127.0.0.1:8012 (first start takes 2-3 min)
@@ -86,14 +93,16 @@ Ready-made clients: [examples/](examples) (curl chat, streaming, tool call round
 | `HYBRID_DRAFT_TOKENS` | `15` | `0` turns hybrid drafting off (15 tested faster than 8) |
 | `RAM_TIER_GIB` | `8` | system RAM for parked sessions |
 | `MODELS_DIR` | `./models` | where the weights live |
+| `TRITON_CACHE_DIR` | Triton default | optional cache directory; measurements used pinned host FLA choices, described in [engine notes](engine/NOTES.md) |
 | `TP_BACKEND` | `nccl` | tensor-parallel backend: `nccl` reduces GPU-to-GPU over P2P (+4-6 % decode, +10 % prefill here); `native` goes through system RAM. Run `scripts/p2p_check.py` first; if it fails, use `native` |
 
 ## How two agents share the cards
 
 Two requests generate at the same time; a third waits for a free slot. The two active requests share a 655,360-token cache, so
 ~320K + ~320K or 393K + ~255K fit, while 330K + 330K does not; if they don't fit, the second waits until the first finishes.
-Running requests are never evicted. Two streams together are about as fast as one in total (9-30 % lower), so the win is that
-a short subagent doesn't wait behind a long main thread. Sessions that go idle move to system RAM and come back in seconds.
+Running requests are never evicted. Throughput depends on the workload: the qualified paired probe measured 67.25 tokens/s
+in aggregate. The scheduler lets a short request make progress alongside a long request. Sessions that go idle move to
+system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Troubleshooting
 
@@ -101,13 +110,15 @@ a short subagent doesn't wait behind a long main thread. Sessions that go idle m
   startup and refuses to start vision or concurrency on a modified engine.
 - **"missing native/exllamav3_ext…":** run `./engine/build_native.sh` with the venv's Python 3.13 and CUDA 13.x `nvcc` on `PATH`.
 - **Out of GPU memory at startup or with big images:** close anything else on the GPUs. `VISION=0` frees the vision tower's ~0.4 GB on GPU 0.
-- **First start is slow:** it compiles a small fused kernel once; every start also loads ~117 GiB of weights and captures CUDA graphs (2-3 minutes).
-- **"bwrap not found":** images still work, decoded under memory and CPU limits only. Install `bubblewrap` for the full sandbox.
+- **First start is slow:** it loads ~117 GiB of weights, compiles any missing Triton kernels and captures CUDA graphs (2-3 minutes).
+- **"bwrap not found":** install `bubblewrap` or set `VISION=0`. Image serving refuses to start without the sandbox.
 - **Keep the vision tower on GPU 0.** With it on GPU 1 we saw one unexplained tensor-parallel timeout.
 - **NCCL problems** (hangs at startup, `NCCL WARN` in the log, or `p2p_check.py` FAILED): start with `TP_BACKEND=native`. NCCL needs working
   GPU peer-to-peer between the cards; `nvidia-smi topo -p2p r` should show `OK`.
 
 ## Roadmap
+
+- **Engine rebase:** the qualified recipe pins upstream dev `0f685aa9fd` and uses native SWA draft state. See [engine/NOTES.md](engine/NOTES.md) for retained patches and source reproduction.
 
 - **Done (2026-10-12): NCCL over GPU P2P.** A content check (peer copies and NCCL all-reduce against a CPU reference) passed on our
   cards, NCCL picked the P2P/CUMEM transport, and an A/B on this build measured +4.4 / +6.5 % decode and +10 % prefill with no memory cost.
@@ -129,22 +140,24 @@ a short subagent doesn't wait behind a long main thread. Sessions that go idle m
 |---|---|
 | Model | [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), 3.05 bpw (rev `332ab457`), ~116.6 GiB |
 | Drafter | [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2) (rev `bf582e4e`), converted locally to EXL3 6 bpw, 7 draft tokens |
-| Engine | ExLlamaV3 at `3a8e2fb84c` + [9 patches](engine/NOTES.md): TP DFlash2, a compact KV layout (`k_idx` ring) that fits 655K tokens, graph/BLAS fixes, fair scheduling, hybrid drafting hook |
+| Engine | ExLlamaV3 at `0f685aa9fd` + [4 patches](engine/NOTES.md): cache ring, fair scheduling, image draft-id guard and SWA checkpoint fix. TP DFlash2, hybrid drafting and recurrent paired states use upstream implementations |
 | Server | [service/](service): Flun's server plus TP serving, two-session scheduler, prefix cache, RAM tier, vision, hybrid drafting |
 | TP backend | NCCL 2.30.7 over GPU P2P (transport P2P/CUMEM); `native` (host-RAM all-reduce) as fallback |
-| KV cache | Q8, 655,360-token pool |
+| Target KV cache | Q8, 655,360-token shared pool |
+| Draft state | Native FP16 sliding-window rings; 2,560 rows per active slot |
+| Paired checkpoints | Upstream recurrent paired-state cache, 5 GiB budget |
 
 | path | contents |
 |---|---|
 | `engine/` | base commit, patches, apply/verify/build scripts, notes |
-| `service/` | the server (`glm/`), drafter converter (`dflash2/`), fused kernels, CPU tests |
+| `service/` | the server (`glm/`), drafter converter (`dflash2/`), CPU tests |
 | `scripts/` | setup, model download, start, GPU wait, P2P/NCCL check |
 | `examples/` | API clients |
 | `docs/PERFORMANCE.md` | all measurements and the ideas that didn't help |
 
 ## Known limits
 
-- Speed depends on the text: ~40 tok/s on hard reasoning, 115-147 tok/s on structured output.
+- Speed depends on the workload and draft acceptance. The bounded counting and reasoning probes above do not predict every task.
 - A large new prompt slows a session that's already generating until its prefill finishes.
 - Two identical requests that start at the exact same instant can, rarely, differ in early tokens.
 - For the layer-split profile, use Flun's repo; this one targets tensor parallel.

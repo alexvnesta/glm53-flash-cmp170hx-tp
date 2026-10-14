@@ -97,6 +97,7 @@ class UpstreamTruncationTests(unittest.TestCase):
                                 sample_from_state=sample)
         generator = SimpleNamespace(active_jobs=[job], num_draft_tokens=7, draft_model=draft,
             draft_cache=object(), draft_calibrator=SimpleNamespace(threshold=lambda:5.0) if adaptive else None,
+            draft_recurrent=False,   # P16: upstream passes draft-side recurrent states only for a recurrent drafter
             draft_input_ids_pinned=torch.zeros((1,1),dtype=torch.long),
             draft_ids_pinned=torch.zeros((1,7),dtype=torch.long),
             _staging=lambda name,*shape:torch.zeros(shape,dtype=torch.long))

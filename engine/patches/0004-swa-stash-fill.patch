@@ -1,0 +1,297 @@
+From 14c53dac294e772846bdf4180ec32e39a5df04b0 Mon Sep 17 00:00:00 2001
+From: alexvnesta <alex.v.nesta@gmail.com>
+Date: Mon, 12 Oct 2026 22:24:57 -0400
+Subject: [PATCH] SWAState: checkpoint the ring by its fill, not the absolute
+ position
+
+An SWAState's ring holds positions [window_beg, position) at rows [0, fill), fill = position - window_beg.
+SWAState.stash/unstash passed the absolute position to the per-layer stash/unstash (and to the per-rank
+mp_cache_recurrent_stash/unstash), whose slice is [min(kv_state_size, position) - sliding_window, ...). That
+equals the live run only while fill == min(kv_state_size, position), which holds for prefill-time checkpoints
+but not in decode: a DFlash-family drafter appends its block before verification, _decode_state_prep shifts
+the ring a page left when the block does not fit, and update_kv_from_target then writes the accepted rows, so a
+round that starts within block_size - 1 tokens of a checkpoint boundary leaves fill = kv_state_size - PAGE_SIZE
+at a page-aligned position. The stash then copied rows past the live run and the restore wrote a window with a
+page of zero rows inside it (DFlash2 GLM-5.3 drafter, window 2047, ring 2560: rows [513, 2560) instead of
+[257, 2304)). Output stays lossless (drafts are verified) but drafting after a prompt-cache resume degrades.
+Pass the fill on both paths.
+
+Local fix, carried until an upstream equivalent lands (P16 stage 2, U1 in stage2/DESIGN.md: a CPU replay of
+the upstream source found 541 of 600 decode-time checkpoints wrong and 0 of 800 prefill-time ones; with the
+fill, every restore is exact).
+
+Test: tests/cache/test_swa_state_checkpoint.py (CPU: the real SWAState, SWALayerState, PairedState and the
+SlidingAttention row methods on CPU tensors; the unfixed source fails 26 of its 27 cases).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ exllamav3/modules/sliding_attn.py        |  14 +-
+ tests/cache/test_swa_state_checkpoint.py | 216 +++++++++++++++++++++++
+ 2 files changed, 226 insertions(+), 4 deletions(-)
+ create mode 100644 tests/cache/test_swa_state_checkpoint.py
+
+diff --git a/exllamav3/modules/sliding_attn.py b/exllamav3/modules/sliding_attn.py
+index b53f517..3524be7 100644
+--- a/exllamav3/modules/sliding_attn.py
++++ b/exllamav3/modules/sliding_attn.py
+@@ -103,12 +103,17 @@ class SWAState:
+             "checkpoint_size": self.checkpoint_size,
+             "window_beg": self.window_beg,
+         }
++        # The layer states index the ring by fill (rows held since window_beg), not by absolute position: after a
++        # window shift the fill can be a page short of kv_state_size at a page-aligned position (a DFlash draft
++        # block that shifted the ring, then fewer accepted rows), and min(kv_state_size, position) would then
++        # stash rows past the live window
++        fill = self.position - self.window_beg
+         if not self.cache.model.loaded_tp:
+             for k, l in self.cache.get_all_recurrent_layers().items():
+-                stashed[k] = l.stash(self.slot, self.position)
++                stashed[k] = l.stash(self.slot, fill)
+         else:
+             cp_handle = new_checkpoint_handle()
+-            self.cache.model.tp_dispatch_all(mp_cache_recurrent_stash, (id(self.cache), cp_handle, self.slot, self.position))
++            self.cache.model.tp_dispatch_all(mp_cache_recurrent_stash, (id(self.cache), cp_handle, self.slot, fill))
+             stashed["tp_handle"] = cp_handle
+         return stashed
+ 
+@@ -116,12 +121,13 @@ class SWAState:
+     def unstash(self, stashed: dict):
+         assert self.position == stashed["position"]
+         self.window_beg = stashed["window_beg"]
++        fill = self.position - self.window_beg
+         if not self.cache.model.loaded_tp:
+             for k, l in self.cache.get_all_recurrent_layers().items():
+-                l.unstash(self.slot, stashed[k], self.position)
++                l.unstash(self.slot, stashed[k], fill)
+         else:
+             cp_handle = stashed["tp_handle"]
+-            self.cache.model.tp_dispatch_all(mp_cache_recurrent_unstash, (id(self.cache), cp_handle, self.slot, self.position))
++            self.cache.model.tp_dispatch_all(mp_cache_recurrent_unstash, (id(self.cache), cp_handle, self.slot, fill))
+ 
+ 
+     def post_advance(self):
+diff --git a/tests/cache/test_swa_state_checkpoint.py b/tests/cache/test_swa_state_checkpoint.py
+new file mode 100644
+index 0000000..4bb3a7d
+--- /dev/null
++++ b/tests/cache/test_swa_state_checkpoint.py
+@@ -0,0 +1,216 @@
++"""
++Sliding-window recurrent state checkpoints (SWAState.stash / unstash) keep the live attention window.
++
++An SWAState's ring holds positions [window_beg, position) at rows [0, fill), fill = position - window_beg. A
++checkpoint copies the last sliding_window rows of that run and a restore writes them back at the same rows. In
++decode, a DFlash-family drafter appends its block to the ring before verification; when the block does not fit,
++_decode_state_prep shifts the ring a page left, and update_kv_from_target then rolls the state back and writes
++the accepted rows. A round that starts within block_size - 1 tokens of a checkpoint boundary therefore leaves
++fill = kv_state_size - PAGE_SIZE at a page-aligned position. Indexing the ring by min(kv_state_size, position)
++instead of the fill stashed rows past the live run and restored a window with a page of zero rows inside it.
++
++No GPU: the real SWAState, SWALayerState, PairedState and the SlidingAttention row methods (plan_state_rows,
++write_state_rows, commit_state_rows, _decode_state_prep) on CPU tensors, driven in the generator's order
++(prefill chunks; draft forward, verify, update_kv_from_target per round; checkpoint at the boundary; restore into
++the other slot). Each K/V row encodes its absolute position, so a restored window is checked exactly.
++"""
++
++from collections import deque
++import random
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from exllamav3.cache.recurrent import PairedState, host_pool
++from exllamav3.constants import PAGE_SIZE
++from exllamav3.modules.sliding_attn import SlidingAttention, SWALayerState, SWAState
++
++pytestmark = pytest.mark.nogpu
++
++WINDOW = 2047                      # DFlash2 GLM-5.3 drafter: sliding_window 2048, non-causal block -> window 2047
++BLOCK = 8                          # DFlash2 block (anchor + 7 mask tokens)
++OVERP = 2 * PAGE_SIZE              # SlidingAttention overprocessing default
++INTERVAL = 2048                    # recurrent_checkpoint_interval
++
++
++@pytest.fixture(autouse = True)
++def fresh_pool():
++    host_pool.free.clear()
++    yield
++    host_pool.free.clear()
++
++
++class Ring:
++    """Two sliding layers over `slots` state slots (heads/dims shrunk: the geometry is per row)."""
++
++    def __init__(self, slots = 2, layers = 2, loaded_tp = False):
++        self.S = -(-(WINDOW + OVERP) // PAGE_SIZE) * PAGE_SIZE
++        self.modules = []
++        self.layer_states = {}
++        for i in range(layers):
++            m = SlidingAttention.__new__(SlidingAttention)
++            m.kv_state_size, m.sliding_window, m.num_kv_heads, m.head_dim = self.S, WINDOW, 1, 2
++            m.layer_idx, m.bt_cache, m.device = i, {}, torch.device("cpu")
++            ls = SWALayerState(m, slots, 16, 0)
++            ls.alloc("cpu")
++            self.modules.append(m)
++            self.layer_states[(i, 0)] = ls
++        ring = self
++        self.dispatched = []
++
++        class Model:
++            def __init__(self):
++                self.loaded_tp = loaded_tp
++
++            def tp_dispatch_all(self, fn, args):
++                ring.dispatched.append((fn.__name__, args))
++
++        class Cache:
++            model = Model()
++            free_list = deque(range(slots))
++
++            def get_all_recurrent_layers(self):
++                return ring.layer_states
++
++            def get_recurrent_layer(self, instance):
++                return ring.layer_states[instance]
++
++            def release_state(self, state):
++                self.free_list.appendleft(state.slot)
++
++        self.cache = Cache()
++
++    @staticmethod
++    def rows(positions):
++        p = torch.tensor(list(positions), dtype = torch.int64)
++        # exact in fp16 below 2049; +1 keeps every written row nonzero
++        return torch.stack(((p // 1024) + 1, (p % 1024) + 1), dim = -1).to(torch.half).view(1, -1, 1, 2)
++
++    def new_state(self):
++        return SWAState(self.cache, self.cache.free_list.popleft(), 0, clear = True)
++
++    def write(self, state, pos0, n):
++        """dflash update_kv_from_target for one row: plan, every layer writes, commit"""
++        plan = self.modules[0].plan_state_rows([state], [pos0], [n], n)
++        k = self.rows(range(pos0, pos0 + n))
++        for m in self.modules:
++            m.write_state_rows([state], plan, k, k.clone())
++        SlidingAttention.commit_state_rows([state], plan)
++
++    def draft_forward(self, state):
++        """DFlash draft forward: per layer _decode_state_prep then the block lands at the in-state length;
++        advance_recurrent_states with the (bsz, 1) anchor ids, then post_advance"""
++        for m in self.modules:
++            ks, vs = self.layer_states[(m.layer_idx, 0)].get_state_tensors()
++            _, seqlens = m._decode_state_prep([state], ks, vs, BLOCK)
++            c = int(seqlens[0])
++            ks[state.slot, c : c + BLOCK] = -1.0
++            vs[state.slot, c : c + BLOCK] = -1.0
++        state.position += 1
++        state.last_history = 0
++        state.post_advance()
++
++    def bad_window_rows(self, state):
++        """Rows of the window the next draft step attends to ([fill - window, fill)) that differ from the positions
++        [position - window, position)"""
++        fill = state.position - state.window_beg
++        assert fill >= WINDOW
++        want = self.rows(range(state.position - WINDOW, state.position))[0]
++        bad = 0
++        for ls in self.layer_states.values():
++            for t in (ls.k_state, ls.v_state):
++                bad += int((t[state.slot, fill - WINDOW : fill] != want).any(dim = -1).any(dim = -1).sum())
++        return bad
++
++    def restore(self, state):
++        """RecurrentCache.put -> PairedState.stash; Cache.new_from_stashed -> SWAState(..., stashed =)"""
++        stashed = PairedState(None, state).stash()["draft"]
++        restored = SWAState(self.cache, self.cache.free_list.popleft(), state.position, clear = False, stashed = stashed)
++        return restored
++
++
++def prefill(ring, state, length, chunk = 512):
++    pos = 0
++    while pos < length:
++        n = min(chunk, length - pos)
++        ring.write(state, pos, n)
++        pos += n
++    return pos
++
++
++def decode_round(ring, state, target, n):
++    """One round at K/V position `target` that accepts n rows (generator.py: draft, verify, settle, update)"""
++    ring.draft_forward(state)
++    state.rewind(max(0, state.last_history - (n - 1)))
++    ring.write(state, target, n)
++    return target + n
++
++
++def test_decode_checkpoint_after_draft_shift_restores_live_window():
++    """The U1 case: a round starting 3 tokens before the 4096 boundary; the draft block shifts the ring, acceptance
++    stops on the boundary, the stash at 4096 must hold the live run, not rows past it"""
++    ring = Ring()
++    st = ring.new_state()
++    target = prefill(ring, st, 3800)
++    while target < 4093:
++        target = decode_round(ring, st, target, min(5, 4093 - target))
++    assert target == 4093
++    target = decode_round(ring, st, target, 3)                 # boundary round: the block shifts the ring
++    assert target == 4096 and target % INTERVAL == 0
++    assert st.position - st.window_beg == ring.S - PAGE_SIZE   # fill one page short of the ring
++    assert ring.bad_window_rows(st) == 0                       # the live window itself is right
++    restored = ring.restore(st)
++    assert restored.position == 4096 and restored.window_beg == st.window_beg
++    assert ring.bad_window_rows(restored) == 0
++    # The restored state keeps drafting and verifying correctly
++    target = decode_round(ring, restored, target, 7)
++    assert ring.bad_window_rows(restored) == 0
++
++
++def test_prefill_checkpoints_restore_live_window():
++    ring = Ring()
++    st = ring.new_state()
++    for length in range((WINDOW // PAGE_SIZE + 1) * PAGE_SIZE, 8192 + 1, PAGE_SIZE):   # 2304, 2560, ..., 8192
++        pos = st.position
++        ring.write(st, pos, length - pos)
++        restored = ring.restore(st)
++        assert ring.bad_window_rows(restored) == 0, length
++        restored.free()
++
++
++@pytest.mark.parametrize("seed", range(24))
++def test_random_rounds_every_checkpoint_restores_exactly(seed):
++    """Prefill to 3800 in 512-token chunks, then rounds accepting 1..8 rows (1..16 in 15 % of rounds, hybrid H=15),
++    acceptance stopping on each 2048 boundary; every decode-time checkpoint must restore its live window"""
++    rng = random.Random(seed)
++    ring = Ring()
++    st = ring.new_state()
++    target = prefill(ring, st, 3800)
++    checkpoints = 0
++    while checkpoints < 3:
++        width = 16 if rng.random() < 0.15 else 8
++        n = rng.randint(1, width)
++        boundary = (target // INTERVAL + 1) * INTERVAL
++        n = min(n, boundary - target)
++        target = decode_round(ring, st, target, n)
++        if target % INTERVAL == 0:
++            checkpoints += 1
++            assert ring.bad_window_rows(st) == 0
++            restored = ring.restore(st)
++            assert ring.bad_window_rows(restored) == 0, (seed, target, st.position - st.window_beg)
++            restored.free()
++
++
++def test_tp_dispatch_passes_the_fill():
++    """Under a tensor-parallel cache the per-rank stash/unstash receive the same ring fill as the local layers"""
++    ring = Ring(loaded_tp = True)
++    st = SWAState(ring.cache, ring.cache.free_list.popleft(), 4096, test_state = True)
++    st.window_beg = 4096 - (ring.S - PAGE_SIZE)
++    stashed = st.stash()
++    assert "tp_handle" in stashed
++    name, args = ring.dispatched[-1]
++    assert name == "mp_cache_recurrent_stash" and args[-1] == ring.S - PAGE_SIZE
++    SWAState(ring.cache, ring.cache.free_list.popleft(), 4096, clear = False, stashed = stashed)
++    name, args = ring.dispatched[-1]
++    assert name == "mp_cache_recurrent_unstash" and args[-1] == ring.S - PAGE_SIZE
+-- 
+2.54.0
+

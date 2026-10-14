@@ -6,10 +6,9 @@
 # TORCH_CUDA_ARCH_LIST=8.0, CUDA toolkit 13.3, torch 2.14.1+cu130, MAX_JOBS=4, GPUs hidden, low priority.
 # It takes about 25 minutes the first time and compiles on the CPU only; it never loads the result.
 #
-# The service imports the extension from native/ (PYTHONPATH=native:engine-src:service/glm). ext.py of the patched
-# engine refuses an extension without the glm_replay_state_abi marker and never JIT-compiles, so this build is required.
-# The service compiles its own small kernel (glm53_k101.so) from service/kernels/k_hcfuse.py on first start
-# (needs ninja and nvcc, writes service/build/k101); that is not part of this script.
+# The service imports the extension from native/ (PYTHONPATH=native:engine-src:service/glm).
+# The launcher exports the actual rebuilt extension hash for startup custody.
+# No separate k_hcfuse JIT kernel or custom replay ABI marker is required.
 #
 # Environment (all optional; defaults are relative to the repo root, the parent of this script's directory):
 #   REPO_ROOT            repo root
@@ -47,7 +46,6 @@ case "$MAX_JOBS" in ''|*[!0-9]*|0) echo "build_native: MAX_JOBS must be a positi
 die() { echo "build_native: $*" >&2; exit 1; }
 
 [ -f "$ENGINE_SRC/setup.py" ] && [ -d "$ENGINE_SRC/exllamav3/exllamav3_ext" ] || die "no patched engine at $ENGINE_SRC (run engine/apply_engine.sh first)"
-grep -q glm_replay_state_abi "$ENGINE_SRC/exllamav3/exllamav3_ext/bindings.cpp" || die "$ENGINE_SRC is not the patched engine (no glm_replay_state_abi in bindings.cpp)"
 [ -x "$CUDA_HOME/bin/nvcc" ] || die "no nvcc at $CUDA_HOME/bin/nvcc (set CUDA_HOME)"
 command -v "$PYTHON" >/dev/null 2>&1 || die "no interpreter: $PYTHON"
 
@@ -93,7 +91,6 @@ SOS=("$NATIVE_DIR"/exllamav3_ext*.so)
 [ "${#SOS[@]}" = 1 ] || die "expected one exllamav3_ext*.so in $NATIVE_DIR, found ${#SOS[@]}"
 SO=${SOS[0]}
 if command -v sha256sum >/dev/null 2>&1; then SUM=$(sha256sum "$SO" | cut -d' ' -f1); else SUM=$(shasum -a 256 "$SO" | cut -d' ' -f1); fi
-grep -aq glm_replay_state_abi "$SO" || die "$SO lacks the glm_replay_state_abi marker"
 echo "built  : $SO"
 echo "sha256 : $SUM"
 echo "wall   : ${SECS}s"
@@ -103,4 +100,4 @@ fi
 echo "A rebuild is not byte-identical to the measured setup's extension (object files embed source and build paths);"
 echo "compare dynamic symbols if you need to: nm -D --defined-only <so> | c++filt | sort"
 echo "Not loaded. Smoke test (CPU only):"
-echo "  CUDA_VISIBLE_DEVICES= PYTHONPATH=$NATIVE_DIR:$ENGINE_SRC $PYTHON -c 'import exllamav3_ext as e; print(e.glm_replay_state_abi)'"
+echo "  CUDA_VISIBLE_DEVICES= PYTHONPATH=$NATIVE_DIR:$ENGINE_SRC $PYTHON -c 'import torch; import exllamav3_ext as e; print(e.__file__)'"

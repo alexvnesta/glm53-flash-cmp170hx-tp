@@ -7,6 +7,7 @@ Never imports the engine, Torch, a model, or accesses a service/network endpoint
 import argparse
 import ast
 import asyncio
+from contextlib import nullcontext
 import hashlib
 import importlib.util
 from importlib.metadata import version
@@ -48,6 +49,7 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
     selected=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))
               and n.name in ('complete','stream_text')]
     admission=load(helper_dir/'glm_admission.py',label+'_admission')
+    tools=load(helper_dir/'glm_tools.py',label+'_tools')
     cleanup_path=helper_dir/'glm_response_cleanup.py'
     helper=None
     if expect_owned:
@@ -71,12 +73,13 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
     engine.ComboSampler=lambda **kwargs:object();engine.GreedySampler=lambda:object()
     runtime={'lock':lock,'admission':admission.RequestAdmission(admission.AdmissionPolicy()),
              'args':NS(model_dir='/synthetic/model'),'context_length':393216,
-             'generator':NS(error=None),'tokenizer':NS(encode=lambda *a,**k:NS(shape=(1,10))),
+             'generator':NS(error=None,generator=NS(_glm_b2_retention=None)),'tokenizer':NS(encode=lambda *a,**k:NS(shape=(1,10))),
              'config':NS(eos_token_id_list=[2]),'draft_options':NS(record_stats=False)}
     scope=dict(runtime=runtime,Path=Path,MODEL_ID='glm',HTTPException=HTTPException,
                NamedToolChoice=type('NamedToolChoice',(),{}),AdmissionError=admission.AdmissionError,
                anyio=anyio,json=json,time=time,uuid=uuid,traceback=traceback,
-               StreamingResponse=StreamingResponse)
+               StreamingResponse=StreamingResponse,nullcontext=nullcontext,
+               names_strict=tools.names_strict,UNADVERTISED_TOOL_CALLS="pass")
     if helper:scope.update(OwnedJobCleanup=helper.OwnedJobCleanup,OwnedStreamingResponse=helper.OwnedStreamingResponse)
     for node in selected:node.decorator_list=[]
     exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),str(api),'exec'),scope)

@@ -1,0 +1,253 @@
+{
+  "date": "2026-10-09",
+  "status": "bounded_current_dev_tp_prefix_runtime_qualification",
+  "official_base": "6cd89a908d957afba1cd1659fcf7d99a9e56d776",
+  "engine_head": "c8666fbbc58d8731b97b972cedf681d0953beddd",
+  "native_extension_sha256": "f0e2cfae624390782b22dd9253b882724487c2211ed8b703895c5a170ed1511c",
+  "cache_tokens": 393216,
+  "native_gpu_probe_checks_passed": 8,
+  "matched_throughput_measured_requests": 6,
+  "output_cap_tokens": 1024,
+  "cached_tokens_all_measured": 0,
+  "rounds_per_prompt": 3,
+  "fixture_sha256": "e17b354863a2da6b15831c93fd23efcef2d95facf275fe3b5c8136cf74bedd38",
+  "median_decode_tok_s": {
+    "counting": 123.22944326435932,
+    "concurrent_lru_reasoning": 44.11537815348137
+  },
+  "separate_fresh_ls_median_decode_tok_s": {
+    "counting": 96.22260546766772,
+    "concurrent_lru_reasoning": 34.23087937184559
+  },
+  "profile_axes": "TP+BC1+GEMV/INT8_GEMV=0 compared with LS+BC0+ordinary GEMV settings",
+  "whole_choices_equal_to_ls": false,
+  "semantic_probes_passed": 5,
+  "prefix_ringwrap_cancel_recovery_steps_passed": 15,
+  "queue_and_orphan_response_canary": "passed",
+  "multi_session_target_cpu_pressure": "Bounded full393216 lifecycle passed; separately failed65536 profile remains unsupported",
+  "limits": [
+    "Profile gain is not an isolated kernel speedup or equivalent work",
+    "1024-token capped count/LRU responses do not prove complete task quality",
+    "Target-only/DFlash general continuation equivalence remains unqualified",
+    "No active-latent TP migration, simultaneous active requests, larger context or boot qualification",
+    "Full393216 known synthetic lifecycle is bounded qualification; the64Ki cold-control failure remains unresolved"
+  ],
+  "scope": "Current-dev native probes and bounded prefix-mode model lifecycle supplied by sole controller owner.",
+  "raw_machine_evidence_redistributed": false,
+  "multi_session_64k_pilot": {
+    "cache_tokens": 65536,
+    "public_context_tokens": 65280,
+    "session_prompt_tokens": 40018,
+    "warm_cached_tokens": 39936,
+    "pressure_lifecycle": "coldA/coldB/resumeA/coldC/resumeB/cancelD/recoverB passed",
+    "following_http_probes_completed": 5,
+    "following_semantic_status": "failed",
+    "failing_case": "short_markers",
+    "failing_case_cached_tokens": 0,
+    "failing_case_prompt_tokens": 66,
+    "failing_case_completion_tokens": 79,
+    "failing_case_finish_reason": "stop",
+    "failure": "Repeated marker answer containing literal assistant/think control pieces",
+    "full384Ki_pressure_trial": "skipped on semantic failure",
+    "original_service_restoration_utc": "2026-10-09T17:16:46Z",
+    "interpretation": "Retention pass is not overall semantic qualification. Causation/root cause unresolved."
+  },
+  "full384_multi_session_successor": {
+    "date": "2026-10-09",
+    "status": "bounded_full384_multi_session_lifecycle_qualified",
+    "runtime_source_changed": false,
+    "overall_qualification_claimed": true,
+    "known64k_profile_semantically_supported": false,
+    "complete_audit_checks": 1195,
+    "saturation_restoration_checks": 16,
+    "profile": {
+      "cache_tokens": 393216,
+      "context_tokens": 392960,
+      "fixed_draft_tokens": 7,
+      "target_cpu_budget_bytes": 2147483648,
+      "paired_budget_bytes": 1073741824,
+      "recurrent_budget_bytes": 4294967296,
+      "one_active_request": true,
+      "bc_attention": 1,
+      "gemv": 0,
+      "int8_gemv": 0
+    },
+    "pressure_fixture_sha256": "2ef2a93f520505c73a37ee13ce108689ee4390b8a04d47625e950da35dd80cbf",
+    "corrected_fixture_tokens": 133299,
+    "incorrect_historical_fixture_tokens": 1476,
+    "pressure_completions": 6,
+    "cold_A_B_prompt_tokens": 219992,
+    "warm_resume_recovery_cached_tokens": 219904,
+    "pressure_full_choices_semantic_counts_match_both_LS_arms_and_prior_TP": true,
+    "semantic_pre_probes": 4,
+    "semantic_post_probes": 7,
+    "true_long_probe_tokens": [
+      133153,
+      133299
+    ],
+    "distributed_full_choices_semantic_counts_match_LS": true,
+    "distributed_entire_usage_match_LS": false,
+    "throughput": {
+      "medians": {
+        "counting": {
+          "session_profile_decode_tok_s": 123.31653122513194,
+          "modern_prefix_profile_decode_tok_s": 123.22944326435932,
+          "percent_difference_descriptive": 0.07067139026653013
+        },
+        "concurrent_lru_reasoning": {
+          "session_profile_decode_tok_s": 44.08499516298213,
+          "modern_prefix_profile_decode_tok_s": 44.11537815348137,
+          "percent_difference_descriptive": -0.06887165376557869
+        }
+      },
+      "whole_choice_comparison": [
+        {
+          "case": "counting",
+          "round": 1,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        },
+        {
+          "case": "concurrent_lru_reasoning",
+          "round": 1,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        },
+        {
+          "case": "counting",
+          "round": 2,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        },
+        {
+          "case": "concurrent_lru_reasoning",
+          "round": 2,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        },
+        {
+          "case": "counting",
+          "round": 3,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        },
+        {
+          "case": "concurrent_lru_reasoning",
+          "round": 3,
+          "modern_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          },
+          "legacy_comparison": {
+            "choices": true,
+            "semantic_usage": true,
+            "entire_usage": true
+          }
+        }
+      ],
+      "same_generated_work_as_modern": true
+    },
+    "target_final": {
+      "budget_slots": 680,
+      "slot_bytes": 3153920,
+      "rank_slot_bytes": [
+        1720320,
+        1433600
+      ],
+      "slab_budget_bytes": 2144665600,
+      "reserved_budget_bytes": 2144665600,
+      "pinned_bytes": 2144665600,
+      "registered_mapping_bytes": 2144665600,
+      "token_snapshot_bytes": 1392640,
+      "pin_growth_disabled": false,
+      "resident_entries": 680,
+      "metrics": {
+        "pushes": 1542,
+        "dedup_hits": 217,
+        "restores": 383,
+        "evictions": 862,
+        "protected_spill_skips": 0,
+        "duplicate_evictions": 0,
+        "pin_failures": 0,
+        "skipped_spills": 0
+      },
+      "reservation_policy": "lazy_exact_registered_rank_slabs_on_gpu_eviction",
+      "transfer_policy": "unreferenced_page_eviction_only"
+    },
+    "paired_final": {
+      "mode": "tp_multi_session",
+      "hits": 3,
+      "misses": 27,
+      "restored_tokens": 659712,
+      "last_reason": "prefix_or_state_miss",
+      "snapshots": 5,
+      "completed_checkpoints": 5,
+      "draft_snapshot_bytes": 115464192,
+      "host_bytes": 115464192,
+      "paired_native_bytes": 746455040,
+      "paired_host_bytes": 861919232,
+      "paired_budget_bytes": 1073741824,
+      "max_checkpoints": 8,
+      "evictions": 0,
+      "pruned": 1,
+      "captures": 33,
+      "native_releases": 28,
+      "snapshot_too_large": 0,
+      "native_cache_bytes": 746455040,
+      "native_cache_budget_bytes": 4294967296
+    },
+    "startup_native_objects": 6,
+    "startup_torch68_objects": 1,
+    "final_exact_named_objects_absent": 7,
+    "owned_shutdown_seconds": 4.279915107006673,
+    "original_stock_generation_restore_qualified": true,
+    "boot_transition_qualified": false,
+    "limits": [
+      "Saved known-answer lifecycle only; no blanket losslessness or general task quality",
+      "The64K profile remains semantically unsupported",
+      "Whole-process RAM and reserved/driver-free GPU memory are not bounded by the reported tier counters",
+      "One active request; no TP active-latent migration or larger configured context"
+    ]
+  }
+}

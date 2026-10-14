@@ -39,11 +39,21 @@ class ServiceOptionsTests(unittest.TestCase):
                 options.tp_dflash_options(a)
 
     def test_health_uses_actual_loaded_gate(self):
-        g = SimpleNamespace(model=SimpleNamespace(loaded_tp=True), dflash_draft=True,
-                            draft_model=SimpleNamespace(config=SimpleNamespace(experimental_tensor_parallel=True)))
+        # P16: upstream native DFlash2-TP; the gate is the drafter actually attached to this TP target
+        import weakref
+        class Target:
+            loaded_tp = True
+        target = Target()
+        def draft(**kw):
+            values = dict(caps={"dflash_draft": True}, attached_model=weakref.ref(target)); values.update(kw)
+            return SimpleNamespace(**values)
+        g = SimpleNamespace(model=target, dflash_draft=True, draft_model=draft())
         self.assertTrue(options.tp_dflash_health(g))
+        other = Target()
         for key, value in (("model", SimpleNamespace(loaded_tp=False)), ("dflash_draft", False),
-                           ("draft_model", None), ("draft_model", SimpleNamespace(config=SimpleNamespace(experimental_tensor_parallel=1)))):
+                           ("draft_model", None), ("draft_model", draft(caps={})),
+                           ("draft_model", draft(attached_model=weakref.ref(other))),
+                           ("draft_model", draft(attached_model=None))):
             old = getattr(g, key); setattr(g, key, value)
             self.assertFalse(options.tp_dflash_health(g)); setattr(g, key, old)
 

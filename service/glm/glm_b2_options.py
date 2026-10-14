@@ -1,11 +1,16 @@
-"""Default-off options for the bounded full-pool B2 paired-retention candidate."""
+"""Default-off options for the bounded full-pool B2 paired-retention candidate (P16 stage 2: native paired checkpoints)."""
 from dataclasses import dataclass
 import os
 
+# P16 stage 2: the native recurrent checkpoint budget (--recurrent-cache-gib) of the shared-prefix profile. It holds both
+# sides of every paired checkpoint (target KDA state ~149.5 MB + DFlash2 window ~41.9 MB, ~191.4 MB). 5 GiB keeps the
+# stage-1 checkpoint count (4 GiB of ~149.5 MB target-only checkpoints, 28) and replaces stage 1's 4 GiB native +
+# 1 GiB B2 paired budget (--session-cache-gib, retired)
+B2_NATIVE_CHECKPOINT_BYTES=5*1024**3
 # Qualified B2 page pool and its per-request context (the pool less one reserved page)
 B2_CACHE_TOKENS=393216
 B2_CONTEXT_TOKENS=B2_CACHE_TOKENS-256
-# GLM5.3 Q8 target bytes per MLA layer per page with the full k_idx plane (256 rows of 512 B); the
+# GLM5.3 Q8 target bytes per MLA layer per page with the full k_idx plane (256 rows of 512 B, c1 L1c); the
 # engine k_idx ring keeps W of those rows, so a larger pool holds the same bytes as the qualified one (iso-storage)
 FULL_PAGE_BYTES=286720
 KIDX_ROW_BYTES=512
@@ -73,8 +78,6 @@ def _b2_pool_ok(args):
 class B2RetentionOptions:
     enabled: bool = False
     target_cpu_bytes: int = 0
-    paired_bytes: int = 0
-    max_checkpoints: int = 0
     shared_prefix_tokens: int = 0
 
 
@@ -89,11 +92,11 @@ def b2_retention_options(args, concurrency, retention):
         raise ValueError('B2 shared requires its paired owner')
     if shared:
         prefix=65536 if prefix is None else prefix
-        # The optional target CPU tier keeps its own 0..8 GiB check below.
+        # The optional target CPU tier keeps its own 0..8 GiB check below. P16 stage 2: the native recurrent cache
+        # holds both sides of every checkpoint (B2's own 1 GiB / eight-pair budget is gone).
         if (type(prefix) is not int or not 256<=prefix<=393216 or prefix%256
-                or retention.paired_bytes!=1024**3
-                or retention.max_checkpoints!=8 or retention.recurrent_bytes!=4*1024**3):
-            raise ValueError('B2 shared starts with exact1GiB/eight pairs/native4GiB and a bounded page cap')
+                or retention.recurrent_bytes!=B2_NATIVE_CHECKPOINT_BYTES):
+            raise ValueError('B2 shared starts with the exact native 5GiB paired checkpoint budget and a bounded page cap')
     if type(enabled) is not bool:
         raise ValueError('Experimental B2 session flag must be a bool')
     if not enabled:
@@ -113,6 +116,4 @@ def b2_retention_options(args, concurrency, retention):
             or getattr(args,'cpu_cache_size',0)):
         raise ValueError('B2 session candidate requires exact 393216-token TP/K7 (a larger pool only with '
                          'EXL3_MLA_KIDX_RING and --context-cap), two sequences and its own paired owner')
-    if not 4<=retention.max_checkpoints<=128:
-        raise ValueError('B2 paired retention needs at least four finite checkpoint slots')
-    return B2RetentionOptions(True,target*1024**3,retention.paired_bytes,retention.max_checkpoints,prefix if shared else 0)
+    return B2RetentionOptions(True,target*1024**3,prefix if shared else 0)

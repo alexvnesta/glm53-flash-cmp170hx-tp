@@ -32,12 +32,6 @@ async def close_tp_service(model, draft_model, async_generator=None):
             await _join_generator_close(async_generator)
         except BaseException as error:
             failures.append(error)
-        manager = getattr(async_generator.generator, "_glm_dflash_prefix_cache", None)
-        if manager is not None and callable(getattr(manager, "close", None)):
-            try:
-                manager.close()
-            except BaseException as error:
-                failures.append(error)
     for owned in (model, draft_model):
         if owned is None:
             continue

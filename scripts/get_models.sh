@@ -13,8 +13,8 @@ DRAFT_REV=bf582e4eacc1810f76656d1811693ff6c6737d2a
 export PYTHONPATH="$ROOT/native:$ROOT/engine-src:$ROOT/service/glm${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$MODELS_DIR"
 fetch() {  # repo revision dir
-  [ -f "$3/config.json" ] && { echo "== $1 already in $3"; return; }
-  echo "== downloading $1@$2 -> $3"
+  # Always resolve the pinned snapshot; config.json alone cannot prove a complete or correct download.
+  echo "== resolving pinned $1@$2 -> $3 (completed downloads are cached)"
   "$PY" -c "import sys; from huggingface_hub import snapshot_download as s; s(repo_id=sys.argv[1], revision=sys.argv[2], local_dir=sys.argv[3])" "$1" "$2" "$3"
 }
 fetch "$TARGET_REPO" "$TARGET_REV" "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw"

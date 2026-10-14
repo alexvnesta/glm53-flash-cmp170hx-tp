@@ -2,8 +2,8 @@
 
 This module never accepts an API cache key or a caller-supplied boundary. It uses
 the selected live template/tokenizer and binds its exact full token sequence to
-the subsequently enqueued job. Native pages, recurrent stashes and raw draft
-snapshots remain under the completed manager's existing ownership and budgets.
+the subsequently enqueued job. Native pages and paired recurrent checkpoints (target
+and draft window together) remain under upstream's own ownership and budget.
 """
 from contextlib import contextmanager
 import copy
@@ -100,22 +100,30 @@ class Ticket:
 class SharedJob:
     boundary: int
     attempted: bool = False
-    shared_plan: bool = False
+    expected: int = 0       # position of the recorded boundary this job's allocation should resume at (0: none)
+
+
+@dataclass(frozen=True)
+class Boundary:
+    """A shared system/tools boundary: the native paired checkpoint stashed under `key` at `position`."""
+    key: bytes
+    position: int
+    prefix: object
 
 
 class B2SharedPrefix:
-    """Two bounded admission tickets; completed membership owns no extra Pair."""
+    """Two bounded admission tickets; boundary records name native paired checkpoints and own no state tensors."""
     def __init__(self, coordinator, token_cap, template, tokenizer, renderer):
+        from glm_b2_options import B2_NATIVE_CHECKPOINT_BYTES
+        native=coordinator.native
         if (type(token_cap) is not int or not 256 <= token_cap <= 393216 or token_cap % 256
-                or coordinator.pairs.max_bytes != 1024**3 or coordinator.pairs.max_checkpoints != 8
-                or coordinator.native.max_size != 4*1024**3
-                or coordinator.pairs._all() or coordinator.pairs.jobs):
-            raise ValueError('B2 shared requires fresh exact1GiB/eight-pair/native4GiB owner')
+                or native.max_size != B2_NATIVE_CHECKPOINT_BYTES or len(native) or coordinator.jobs):
+            raise ValueError('B2 shared requires a fresh exact native 5GiB paired checkpoint owner')
         self.owner=coordinator;self.token_cap=token_cap
         # Epoch: None or the exact target tier attached before this object.
-        # Shared checkpoints hold no page references; validity stays is_resumable.
+        # Boundary records hold no page references; validity stays resumable(key).
         self.tier=coordinator.tier
-        self.context=(template,tokenizer,renderer);self.prepared=None;self.tickets={};self.completed=set()
+        self.context=(template,tokenizer,renderer);self.prepared=None;self.tickets={};self.records={}
         g=coordinator.generator
         self.owners=(g.model,g.cache,g.draft_cache,g.recurrent_cache)
         self.owner_serial=getattr(g.cache,'owner_serial',None)
@@ -152,9 +160,9 @@ class B2SharedPrefix:
         import torch
         self.fence();scope=self.prepared
         if scope is None or scope[0] is None:return
-        if scope[1] is not None or job in self.tickets or job in self.owner.pairs.jobs:
+        if scope[1] is not None or job in self.tickets or job in self.owner.jobs:
             raise ValueError('A shared API ticket can bind exactly one fresh job')
-        if len(self.tickets)+len(self.owner.pairs.jobs)>=2 or len(job.sequences)!=1:
+        if len(self.tickets)+len(self.owner.jobs)>=2 or len(job.sequences)!=1:
             raise ValueError('Only two shared pending/active job admissions')
         ticket=scope[0]
         if not torch.equal(job.sequences[0].input_ids.torch(),ticket.tokens):
@@ -163,7 +171,7 @@ class B2SharedPrefix:
 
     def drop_ticket(self,job):self.tickets.pop(job,None)
 
-    def prepare(self,job,state):
+    def prepare(self,job,record):
         import torch
         ticket=self.tickets.pop(job,None)
         if ticket is None:return
@@ -172,24 +180,23 @@ class B2SharedPrefix:
                 or not torch.equal(actual,ticket.tokens) or _sha(_encoded(actual[0].tolist()))!=ticket.token_sha256):
             raise ValueError('Delayed native prepare lost its exact admitted token/renderer epoch')
         self.prune();boundary=ticket.boundary;tokens=actual[0].tolist();common=0
-        for cp in self.owner.pairs.completed.values():
-            if cp.identity in self.completed and self.owner.valid(cp):
-                common=max(common,min(boundary,_lcp(tokens,cp.prefix[0].tolist()))//256*256)
+        for boundary_record in self.records.values():
+            common=max(common,min(boundary,_lcp(tokens,boundary_record.prefix[0].tolist()))//256*256)
         if common:boundary=common;self.owner.metrics['shared_adapted_boundaries']+=1
-        state.shared_info=SharedJob(boundary)
-        for cp in sorted(self.owner.pairs.completed.values(),key=lambda p:p.position,reverse=True):
-            if cp.position<=boundary and self.owner.valid(cp) and torch.equal(actual[:,:cp.position],cp.prefix):
-                state.shared=cp;break
-        cp=state.plan
-        state.shared_info.shared_plan=cp is not None and cp.identity in self.completed and cp.position<=boundary
+        info=SharedJob(boundary)
+        for boundary_record in sorted(self.records.values(),key=lambda r:r.position,reverse=True):
+            if boundary_record.position<=boundary and torch.equal(actual[:,:boundary_record.position],boundary_record.prefix):
+                info.expected=boundary_record.position;break
+        record.shared_info=info
 
-    def restored(self,job,cp):
-        state=self.owner.pairs.jobs[job];info=state.shared_info
-        if info is not None and info.shared_plan and cp.identity in self.completed:
-            self.owner.metrics['shared_hits']+=1;self.owner.metrics['shared_restored_tokens']+=cp.position
+    def allocated(self,job,record,position):
+        """The native allocation resumed this job; a resume exactly at its recorded shared boundary is a shared hit."""
+        info=record.shared_info
+        if info is not None and info.expected and position==info.expected:
+            self.owner.metrics['shared_hits']+=1;self.owner.metrics['shared_restored_tokens']+=position
 
     def prefill(self,job,results,native,*args,**kwargs):
-        self.fence();state=self.owner.pairs.jobs[job];info=state.shared_info
+        self.fence();info=self.owner.jobs[job].shared_info
         if info is None or info.attempted:return native(job,results,*args,**kwargs)
         if len(args)>1 or set(kwargs)-{'chunk_size'} or args and 'chunk_size' in kwargs:
             raise TypeError('Exact native optional chunk_size once')
@@ -201,25 +208,25 @@ class B2SharedPrefix:
             return native(job,results,*args,**kwargs)
         cap=min(self.owner.generator.max_chunk_size if chunk is None else chunk,boundary-pos)
         result=native(job,results,chunk_size=cap)
-        self.fence();pos=job.sequences[0].kv_position
+        self.fence();seq=job.sequences[0];pos=seq.kv_position
         if pos>=boundary:
             info.attempted=True
             if pos==boundary:
-                # Use the same hooked stash/reservation/raw-window path. No rewind.
+                # The hooked stash path (B2 checks and terminal latch); the native put stashes the pair. No rewind.
                 job.maybe_stash_recurrent(self.owner.native,PAGE_SIZE)
-                candidates=state.images()
-                cp=next((p for p in candidates if p.position==boundary and self.owner.valid(p)),None)
-                if cp is not None:
-                    self.owner.pairs.adopt_shared(job,cp);self.owner.metrics['shared_captures']+=1
+                key=seq.allocated_pages[boundary//PAGE_SIZE-1].phash
+                stash=self.owner.native.get(key)
+                if stash is not None and stash.get('position')==boundary and self.owner.resumable(key):
+                    self.records[key]=Boundary(key,boundary,seq.sequence_ids.torch_slice(0,boundary).clone())
+                    self.owner.metrics['shared_captures']+=1
                 else:self.owner.metrics['shared_capture_skips']+=1
             else:self.owner.metrics['shared_boundary_overshoots']+=1
         return result
 
-    def finish(self,cp,success):
-        if success and cp is not None and self.owner.pairs.completed.get(cp.identity) is cp:self.completed.add(cp.identity)
-        self.prune()
+    def finish(self,record,success):self.prune()
 
-    def prune(self):self.completed.intersection_update(self.owner.pairs.completed)
+    def prune(self):
+        for key in [key for key in self.records if not self.owner.resumable(key)]:del self.records[key]
 
     def close(self):
-        self.tickets.clear();self.completed.clear();self.prepared=None;self.context=None
+        self.tickets.clear();self.records.clear();self.prepared=None;self.context=None

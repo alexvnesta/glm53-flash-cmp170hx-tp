@@ -1,3 +1,5 @@
+> Historical upstream documentation. The current supported recipe is the root README and `scripts/run_tp.sh`; retired layer-split/MTP/cache flags below are not the current tensor-parallel launch configuration.
+
 > **Note (this repository):** this is Flun's original README for his layer-split server, kept as his work. The tensor-parallel setup this repository documents (TP=2, two sessions, prefix/RAM caching, vision, hybrid drafting) is described in the top-level [README](../README.md); its engine-file pins expect the patched engine in `engine/`, so the layer-split profiles below need Flun's original repo and stock ExLlamaV3.
 
 # GLM-5.3-Flash EXL3 serving — 2× 64GB GPUs (CMP 170HX / SM80)

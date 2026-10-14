@@ -1,0 +1,448 @@
+From d7ead97925630abd5b03cdbed9084d1d4d43b293 Mon Sep 17 00:00:00 2001
+From: alexvnesta <alex.v.nesta@gmail.com>
+Date: Mon, 12 Oct 2026 21:05:30 -0400
+Subject: [PATCH] Generator: fair scheduling between prompt ingestion and
+ generation
+
+New Generator arguments fair_gen_rounds (default 1) and fair_chunk_size (default None). While the active set
+mixes jobs that still ingest a prompt with jobs that are already generating, iterate() can run fair_gen_rounds
+generation steps per prefill chunk and shrink the prefill chunk to fair_chunk_size (a multiple of the 256-token
+page), so streaming jobs keep emitting tokens while a long prompt is ingested. Job.prefill takes the chunk
+size. With the defaults the scheduler behaves as before (one round, full chunk).
+
+No upstream counterpart (same argument names as open upstream PR #448).
+
+Port of public-repo engine patch 0006 onto upstream dev 0f685aa9fd (P16), by hand (not a 3-way merge).
+job.py: same hunk. generator.py: dev restructured the generation block into draft -> iterate_hybrid_gen ->
+iterate_gen; the whole block, including the hybrid substitution, now runs inside the gen_rounds loop, so each
+extra fair round drafts, substitutes and verifies like a normal round (as the deployed hybrid wrapper did, which
+replaced the drafting method itself). Two compatibility changes against the deployed patch, both on the default
+path only: the fair settings are also class attributes (a generator built without __init__ schedules as
+before), and when no fair chunk applies iterate() calls Job.prefill(results) with one argument, exactly as
+upstream does, so callers and hooks that only know prefill(results) keep working.
+
+Test: tests/generator/test_fair_scheduling.py (CPU).
+---
+ exllamav3/generator/generator.py        | 103 ++++++++---
+ exllamav3/generator/job.py              |  11 +-
+ tests/generator/test_fair_scheduling.py | 222 ++++++++++++++++++++++++
+ 3 files changed, 313 insertions(+), 23 deletions(-)
+ create mode 100644 tests/generator/test_fair_scheduling.py
+
+diff --git a/exllamav3/generator/generator.py b/exllamav3/generator/generator.py
+index 824d5c9..768e45d 100644
+--- a/exllamav3/generator/generator.py
++++ b/exllamav3/generator/generator.py
+@@ -26,6 +26,11 @@ from ..util import profile_opt
+ 
+ class Generator:
+ 
++    # Fair scheduling (see __init__ and iterate()). Class-level defaults, so a generator built without __init__
++    # (test stubs) schedules as before
++    fair_gen_rounds = 1
++    fair_chunk_size = None
++
+     def __init__(
+         self,
+         model: Model,
+@@ -54,6 +59,8 @@ class Generator:
+         record_draft_stats: bool = False,
+         ngram_corpus: str | None = None,
+         hybrid_draft_tokens: int = 0,
++        fair_gen_rounds: int = 1,
++        fair_chunk_size: int | None = None,
+         **kwargs
+     ):
+         """
+@@ -186,6 +193,20 @@ class Generator:
+             Minimum number of tokens between recurrent checkpoints during prompt ingestion. Must be a
+             multiple of the page size. Default is 32768 tokens
+ 
++        :param fair_gen_rounds:
++            Generation steps to run per iteration while some active job is still ingesting its prompt and
++            another is already generating. The default (1) runs one step per prefill chunk, so a streaming job
++            slows to one token per chunk while a long prompt is ingested. Higher values keep streaming jobs
++            responsive at the cost of a slower ingest. No effect while no job is generating or no job is
++            prefilling
++
++        :param fair_chunk_size:
++            Prefill chunk size to use instead of max_chunk_size while another job is generating. Must be a
++            multiple of the page size (256). Shortens each pause of the generating jobs further than
++            fair_gen_rounds alone, at the cost of prefill efficiency during the overlap; solo prefill keeps the
++            full max_chunk_size. Not applied to prompts with multimodal embeddings. Default is None (always
++            use max_chunk_size)
++
+         :param kwargs:
+         """
+ 
+@@ -251,6 +272,14 @@ class Generator:
+         self.max_batch_size = max_batch_size
+         self.max_chunk_size = max_chunk_size
+ 
++        # Fair scheduling between prompt ingestion and generation, see iterate()
++        assert fair_gen_rounds >= 1, \
++            "fair_gen_rounds must be at least 1"
++        assert fair_chunk_size is None or (fair_chunk_size > 0 and fair_chunk_size % PAGE_SIZE == 0), \
++            "fair_chunk_size must be a positive multiple of the page size (256)"
++        self.fair_gen_rounds = fair_gen_rounds
++        self.fair_chunk_size = fair_chunk_size
++
+         # Job queues
+         self.job_serial = 0
+         self.pending_jobs = []
+@@ -679,39 +708,69 @@ class Generator:
+         results = []
+         self.iterate_start_jobs(results)
+ 
++        # Fair scheduling applies while the active set mixes jobs that still have prompt to ingest with jobs
++        # that are already generating. With the default settings this is never checked and the loop below
++        # runs exactly once, as before
++        fair = False
++        if self.fair_gen_rounds > 1 or self.fair_chunk_size is not None:
++            num_generating = sum(1 for job in self.active_jobs if job.is_prefill_done())
++            fair = 0 < num_generating < len(self.active_jobs)
++
+         # Perform one round of prefill
++        chunk_size = self.fair_chunk_size if fair else None
++        num_results = len(results)
+         for job in list(self.active_jobs):
+             try:
+-                job.prefill(results)
++                if chunk_size is None:
++                    job.prefill(results)
++                else:
++                    job.prefill(results, chunk_size)
+             except Exception as e:
+                 self.reap_failed_job(job, e, results)
+ 
+-        # Recurrent checkpoints
+-        if self.recurrent_cache is not None:
+-            self.recurrent_checkpoint()
++        # Extra generation rounds compensate for the forward pass the prefill round just spent on another
++        # job's prompt. A round that only walked cached pages (a requeued job resuming, a prompt cache hit)
++        # emits no progress and gets none, so a job resuming a cached prompt is not held back
++        gen_rounds = 1
++        if fair and any(r["stage"] == "prefill" for r in results[num_results:]):
++            gen_rounds = self.fair_gen_rounds
+ 
+-        # Generation with draft model
+-        if self.draft_model:
+-            if self.dflash_draft:
+-                draft_tokens = self.iterate_draftmodel_dflash_gen(results)
+-            elif self.mtp_draft:
+-                draft_tokens = self.iterate_draftmodel_mtp_gen(results)
+-            else:
+-                draft_tokens = self.iterate_draftmodel_gen(results)
++        for gen_round in range(gen_rounds):
+ 
+-        # Generation with n-gram draft
+-        elif self.ngram_match_min:
+-            draft_tokens = self.iterate_ngram_gen(results)
++            # Recurrent checkpoints
++            if self.recurrent_cache is not None:
++                self.recurrent_checkpoint()
++
++            # Generation with draft model
++            if self.draft_model:
++                if self.dflash_draft:
++                    draft_tokens = self.iterate_draftmodel_dflash_gen(results)
++                elif self.mtp_draft:
++                    draft_tokens = self.iterate_draftmodel_mtp_gen(results)
++                else:
++                    draft_tokens = self.iterate_draftmodel_gen(results)
+ 
+-        # Regular generation
+-        else:
+-            draft_tokens = None
++            # Generation with n-gram draft
++            elif self.ngram_match_min:
++                draft_tokens = self.iterate_ngram_gen(results)
+ 
+-        # Long suffix-match draft over the regular one, when a job is repeating its context
+-        if self.hybrid_draft_tokens:
+-            draft_tokens = self.iterate_hybrid_gen(draft_tokens)
++            # Regular generation
++            else:
++                draft_tokens = None
++
++            # Long suffix-match draft over the regular one, when a job is repeating its context
++            if self.hybrid_draft_tokens:
++                draft_tokens = self.iterate_hybrid_gen(draft_tokens)
+ 
+-        self.iterate_gen(results, draft_tokens)
++            self.iterate_gen(results, draft_tokens)
++
++            # Stop early once the contention is over: the generating job may have finished or requeued (it
++            # left active_jobs and resumes on the next call), or the prefill round may have completed the
++            # other job's prompt, in which case it joins generation on equal terms from here
++            if gen_round + 1 < gen_rounds:
++                num_generating = sum(1 for job in self.active_jobs if job.is_prefill_done())
++                if not 0 < num_generating < len(self.active_jobs):
++                    break
+ 
+         # Visualization
+         if self.visualizer:
+diff --git a/exllamav3/generator/job.py b/exllamav3/generator/job.py
+index 1296db3..85da260 100644
+--- a/exllamav3/generator/job.py
++++ b/exllamav3/generator/job.py
+@@ -1354,7 +1354,7 @@ class Job:
+         return new_pages
+ 
+ 
+-    def prefill(self, results: list):
++    def prefill(self, results: list, chunk_size: int | None = None):
+         """
+         Run prompt prefill chunks for already allocated cache pages.
+ 
+@@ -1362,6 +1362,9 @@ class Job:
+         sequence's kv_position through the prompt, skipping any prefix whose K/V pages were already cached, running
+         model forward passes for uncached chunks, updating page hashes as pages become complete, and stashing
+         recurrent checkpoints when applicable. It emits progress events but does not sample new completion tokens.
++
++        chunk_size, if given, bounds the forward pass of this call below the generator's max_chunk_size (fair
++        scheduling while other jobs are generating). It does not bound the cached-page skip.
+         """
+ 
+         if self.time_first_prefill is None:
+@@ -1408,6 +1411,12 @@ class Job:
+                     prefill_end = local_idx * PAGE_SIZE
+                     break
+ 
++            # A reduced chunk bounds the forward pass only, after the cached pages above were skipped at the
++            # full max_chunk_size window, so a job resuming a cached prompt walks it as fast as before. Prompts
++            # with embeddings keep the full chunk so their multimodal spans are chunked as usual
++            if chunk_size is not None and not self.embeddings:
++                prefill_end = min(prefill_end, (prefill_start + chunk_size) // PAGE_SIZE * PAGE_SIZE)
++
+             if prefill_end <= prefill_start:
+                 continue
+ 
+diff --git a/tests/generator/test_fair_scheduling.py b/tests/generator/test_fair_scheduling.py
+new file mode 100644
+index 0000000..bc116d5
+--- /dev/null
++++ b/tests/generator/test_fair_scheduling.py
+@@ -0,0 +1,222 @@
++"""
++Fair scheduling between prompt ingestion and generation (Generator fair_gen_rounds / fair_chunk_size).
++
++While the active set mixes a job that still ingests its prompt with one that is already generating, iterate()
++runs up to fair_gen_rounds generation rounds (draft, hybrid substitution, verify) per prefill round, and the
++prefill round runs chunks of at most fair_chunk_size tokens. With the defaults the scheduler is upstream's: one
++round, Job.prefill(results) with the full max_chunk_size.
++
++No GPU or model: Generator is built with __new__ around stub jobs (as in test_failure_containment.py), and
++Job.prefill runs on a real Job up to the model call (as in test_multimodal_rewind_prefill.py).
++"""
++
++import inspect
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from exllamav3.constants import PAGE_SIZE
++from exllamav3.generator.generator import Generator
++from exllamav3.generator.job import Job
++from exllamav3.tokenizer import MMEmbedding
++
++pytestmark = pytest.mark.nogpu
++
++
++# Generator.iterate() with stub jobs
++
++class StubPagetable:
++    def num_unreferenced_pages(self):
++        return 1 << 30
++
++
++class StubJob:
++    """generating: prefill is done. Otherwise each prefill() call emits one "prefill" result (forward work done),
++    unless cached_only, which models a round that only walked cached pages (no result)."""
++    def __init__(self, name, generating, cached_only = False):
++        self.name = name
++        self.generating = generating
++        self.cached_only = cached_only
++        self.prefill_calls = []
++        self.serial_number = 0
++        self.sequences = [SimpleNamespace()]
++
++    def is_prefill_done(self):
++        return self.generating
++
++    def prefill(self, *args):
++        self.prefill_calls.append(args)
++        if not self.generating and not self.cached_only:
++            args[0].append({"job": self, "stage": "prefill", "eos": False, "serial": 0})
++
++
++def make_generator(jobs, fair_gen_rounds = None, fair_chunk_size = None, hybrid = 0):
++    g = Generator.__new__(Generator)
++    if fair_gen_rounds is not None:
++        g.fair_gen_rounds = fair_gen_rounds
++    if fair_chunk_size is not None:
++        g.fair_chunk_size = fair_chunk_size
++    g.pagetable = StubPagetable()
++    g.pending_jobs = []
++    g.active_jobs = list(jobs)
++    g.max_batch_size = 16
++    g.cache = SimpleNamespace(initialized = True)
++    g.draft_cache = None
++    g.recurrent_cache = None
++    g.draft_model = None
++    g.ngram_match_min = 0
++    g.hybrid_draft_tokens = hybrid
++    g.visualizer = None
++    g.disk_page_cache = None
++    g.gen_calls = []
++    g.iterate_gen = lambda results, draft_tokens = None: g.gen_calls.append(draft_tokens)
++    return g
++
++
++def test_fair_arguments_are_explicit_with_old_defaults():
++    # Unknown keyword arguments fall into **kwargs and are ignored, so a caller relying on fair scheduling must
++    # find these two as real parameters
++    params = inspect.signature(Generator.__init__).parameters
++    assert params["fair_gen_rounds"].default == 1
++    assert params["fair_chunk_size"].default is None
++    assert Generator.fair_gen_rounds == 1 and Generator.fair_chunk_size is None
++
++
++def test_defaults_are_upstream_scheduling():
++    prefilling, generating = StubJob("p", False), StubJob("g", True)
++    g = make_generator([prefilling, generating])
++    g.iterate()
++    assert prefilling.prefill_calls == [(prefilling.prefill_calls[0][0],)]   # one positional argument
++    assert generating.prefill_calls == [(generating.prefill_calls[0][0],)]
++    assert len(g.gen_calls) == 1
++
++
++def test_fair_rounds_and_chunk_while_mixed():
++    prefilling, generating = StubJob("p", False), StubJob("g", True)
++    g = make_generator([prefilling, generating], fair_gen_rounds = 4, fair_chunk_size = 2 * PAGE_SIZE)
++    g.iterate()
++    assert [c[1:] for c in prefilling.prefill_calls] == [(2 * PAGE_SIZE,)]
++    assert len(g.gen_calls) == 4
++
++
++def test_no_contention_means_no_fair_scheduling():
++    for jobs in ([StubJob("p", False)], [StubJob("g1", True), StubJob("g2", True)],
++                 [StubJob("p1", False), StubJob("p2", False)]):
++        g = make_generator(jobs, fair_gen_rounds = 4, fair_chunk_size = 2 * PAGE_SIZE)
++        g.iterate()
++        for job in jobs:
++            assert [len(c) for c in job.prefill_calls] == [1]
++        assert len(g.gen_calls) == 1
++
++
++def test_cached_page_walk_gets_no_extra_rounds():
++    prefilling, generating = StubJob("p", False, cached_only = True), StubJob("g", True)
++    g = make_generator([prefilling, generating], fair_gen_rounds = 4, fair_chunk_size = 2 * PAGE_SIZE)
++    g.iterate()
++    assert [c[1:] for c in prefilling.prefill_calls] == [(2 * PAGE_SIZE,)]
++    assert len(g.gen_calls) == 1
++
++
++def test_rounds_stop_when_contention_ends():
++    prefilling, generating = StubJob("p", False), StubJob("g", True)
++    g = make_generator([prefilling, generating], fair_gen_rounds = 4)
++
++    def gen(results, draft_tokens = None):
++        g.gen_calls.append(draft_tokens)
++        if len(g.gen_calls) == 2:
++            g.active_jobs.remove(generating)   # finished (or requeued) during round 2
++    g.iterate_gen = gen
++    g.iterate()
++    assert len(g.gen_calls) == 2
++    # fair_gen_rounds alone does not shrink the chunk
++    assert [len(c) for c in prefilling.prefill_calls] == [1]
++
++
++def test_every_fair_round_drafts_and_substitutes_hybrid():
++    prefilling, generating = StubJob("p", False), StubJob("g", True)
++    g = make_generator([prefilling, generating], fair_gen_rounds = 3, hybrid = 15)
++    hybrid_calls = []
++
++    def hybrid_gen(draft_tokens):
++        hybrid_calls.append(draft_tokens)
++        return torch.full((1, 15), len(hybrid_calls))
++    g.iterate_hybrid_gen = hybrid_gen
++    g.iterate()
++    assert hybrid_calls == [None, None, None]
++    assert [int(d[0, 0]) for d in g.gen_calls] == [1, 2, 3]
++
++
++# Job.prefill(results, chunk_size) on a real Job, up to the model call
++
++class ModelBoundaryReached(Exception):
++    pass
++
++
++class ModelProbe:
++    def __init__(self):
++        self.caps = {}
++        self.calls = []
++
++    def prefill(self, *, input_ids, params):
++        self.calls.append((input_ids, params))
++        raise ModelBoundaryReached
++
++    forward = prefill
++
++
++def make_job(prompt_length, start, image = False, max_chunk_size = 2048):
++    ids = torch.arange(prompt_length, dtype = torch.long)[None] % 1000
++    embeddings = []
++    if image:
++        count = 3 * 4 * 6
++        embedding = MMEmbedding(
++            embeddings = torch.zeros((count, 1)),
++            token_string = torch.full((1, count), -1, dtype = torch.long),
++            grid_thw = (3, 8, 12),
++            mrope_merge_size = 2,
++        )
++        ids[:, 300:300 + count] = embedding.token_string
++        embeddings = [embedding]
++    job = Job(input_ids = ids, embeddings = embeddings)
++    seq = job.sequences[0]
++    seq.kv_position = start
++    seq.block_index_tensor = torch.tensor([[0]], dtype = torch.int32)
++    # A recurrent target's checkpoint at the current position ends the cached-page walk and skips the partial-page
++    # copy (the GLM-5.3 case)
++    job.recurrent_state = SimpleNamespace(position = start, target = SimpleNamespace(position = start))
++    job.alt_rope_freqs = None
++    job.alt_rope_offset = 0
++    job.generator = SimpleNamespace(
++        model = ModelProbe(),
++        max_chunk_size = max_chunk_size,
++        recurrent_cache = object(),
++        cache = None,
++        draft_model = None,
++        mtp_draft = False,
++        dflash_draft = False,
++    )
++    return job
++
++
++def forward_span(job, *args):
++    with pytest.raises(ModelBoundaryReached):
++        job.prefill([], *args)
++    (ids, params), = job.generator.model.calls
++    start = params["cache_seqlens"].item()
++    torch.testing.assert_close(ids, job.sequences[0].sequence_ids.torch_slice(start, start + ids.shape[-1]))
++    return start, start + ids.shape[-1]
++
++
++def test_job_prefill_chunk_size_bounds_the_forward():
++    assert forward_span(make_job(8000, 0)) == (0, 2048)
++    assert forward_span(make_job(8000, 0), None) == (0, 2048)
++    assert forward_span(make_job(8000, 0), 512) == (0, 512)
++    assert forward_span(make_job(8000, 1024), 512) == (1024, 1536)
++    # Never longer than max_chunk_size, nor past the prompt's last page boundary
++    assert forward_span(make_job(8000, 0), 4096) == (0, 2048)
++    assert forward_span(make_job(700, 0), 2048) == (0, 512)
++
++
++def test_job_prefill_chunk_size_skips_multimodal_prompts():
++    assert forward_span(make_job(8000, 0, image = True), 512) == (0, 2048)

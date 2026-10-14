@@ -1,0 +1,182 @@
+From 5f964947b52893bdfed1b0ad8f40c5713175e836 Mon Sep 17 00:00:00 2001
+From: alexvnesta <alex.v.nesta@gmail.com>
+Date: Mon, 12 Oct 2026 21:06:00 -0400
+Subject: [PATCH] Generator: hybrid drafts never propose ids outside [0,
+ vocab_size)
+
+Upstream hybrid drafting (e72a906, -hdt / hybrid_draft_tokens) copies a continuation of the job's own
+context into the verify rows. That context can hold multimodal placeholder ids (>= FIRST_MM_EMBEDDING_INDEX,
+1e9). When a serving layer has released the job's multimodal embeddings after prefill (the GLM service's
+P14c drop), a verify row carrying a placeholder id indexes the embedding table out of range: a device assert
+for a solo job, an uninitialized embedding row in a batch. iterate_hybrid_gen now cuts each continuation at
+its first id outside [0, vocab_size) (so it cannot qualify as a long draft) and replaces any such id left in
+the padding with token 0. Lossless: the target samples every verified position.
+
+Replaces the id-range guard of the public-repo engine patch 0007 (generator/hybrid_draft.py, our wrapper
+port of e72a906), which masked ids the same way: continuation() truncated at the first invalid id and
+substitute() masked the final draft with 0. Local, no upstream counterpart (could be upstreamed).
+
+Test: tests/generator/test_hybrid_draft_vocab_guard.py (CPU, real suffix automaton).
+---
+ exllamav3/generator/generator.py              |  11 ++
+ .../test_hybrid_draft_vocab_guard.py          | 112 ++++++++++++++++++
+ 2 files changed, 123 insertions(+)
+ create mode 100644 tests/generator/test_hybrid_draft_vocab_guard.py
+
+diff --git a/exllamav3/generator/generator.py b/exllamav3/generator/generator.py
+index 768e45d..6761ee0 100644
+--- a/exllamav3/generator/generator.py
++++ b/exllamav3/generator/generator.py
+@@ -1363,16 +1363,26 @@ class Generator:
+         draft and are padded with whatever continuation their longest match offers, then with repeats of
+         their last token, which verification rejects at the first mismatch. Returns the (rows, width) draft
+         for iterate_gen, or the regular draft unchanged.
++
++        Never proposes an id outside [0, vocab_size): the context the continuation is copied from can hold
++        multimodal placeholder ids (>= FIRST_MM_EMBEDDING_INDEX), and a verify row carrying one would index the
++        embedding table out of range once the job's multimodal embeddings are no longer attached. A
++        continuation is cut at its first such id (so it cannot qualify as a long draft), and any left in the
++        padding are replaced by token 0, which verification treats like any other draft token.
+         """
+         H = self.hybrid_draft_tokens
+         jobs = [job for job in self.active_jobs if job.is_prefill_done()]
+         if not jobs:
+             return draft_tokens
++        vocab_size = self.model.config.vocab_size
+         rows = []
+         fire = False
+         for i, job in enumerate(jobs):
+             short = draft_tokens[i : i + 1] if draft_tokens is not None else None
+             long, matched = job.get_hybrid_draft(H)
++            invalid = (long[0] < 0) | (long[0] >= vocab_size)
++            if invalid.any():
++                long = long[:, : int(invalid.int().argmax())]
+             # A qualifying row: a match of at least H tokens, H tokens following it, and no disagreement with
+             # the regular drafter over the positions it covers
+             ok = matched >= H and long.shape[-1] == H
+@@ -1397,6 +1407,7 @@ class Generator:
+             fill = fill[:H]
+             out[i, : fill.shape[-1]] = fill
+             out[i, fill.shape[-1] :] = fill[-1]
++        out.masked_fill_((out < 0) | (out >= vocab_size), 0)
+         # The regular drafter's confidence record no longer describes the verified window
+         self._draft_conf_round = None
+         self.hybrid_rounds += 1
+diff --git a/tests/generator/test_hybrid_draft_vocab_guard.py b/tests/generator/test_hybrid_draft_vocab_guard.py
+new file mode 100644
+index 0000000..de39574
+--- /dev/null
++++ b/tests/generator/test_hybrid_draft_vocab_guard.py
+@@ -0,0 +1,112 @@
++"""
++Hybrid drafting (hybrid_draft_tokens / -hdt) never proposes a draft id outside [0, vocab_size).
++
++A job's context can hold multimodal placeholder ids (>= FIRST_MM_EMBEDDING_INDEX). Generator.iterate_hybrid_gen
++copies continuations of the job's own context into the verify rows; a placeholder id in a verify row indexes the
++embedding table out of range once the job's multimodal embeddings are no longer attached (a serving layer may
++release them after prefill). The guard cuts each continuation at its first id outside [0, vocab_size), so such a
++continuation never qualifies as a long draft, and replaces any such id left in the padding with token 0.
++
++No GPU: Generator and Job are built with __new__ around the real suffix automaton (ext.BC_SAM), the real
++Job.get_hybrid_draft and the real Generator.iterate_hybrid_gen.
++"""
++
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from exllamav3.ext import exllamav3_ext as ext
++from exllamav3.generator.generator import Generator
++from exllamav3.generator.job import Job
++from exllamav3.tokenizer.mm_embedding import FIRST_MM_EMBEDDING_INDEX
++
++pytestmark = pytest.mark.nogpu
++
++VOCAB = 1000
++H = 8
++IMG = FIRST_MM_EMBEDDING_INDEX + 17
++
++
++class Ids:
++    def __init__(self, ids):
++        self.t = torch.tensor([ids], dtype = torch.long)
++
++    def torch(self):
++        return self.t
++
++
++def make_job(ids):
++    job = Job.__new__(Job)
++    job.sequences = [SimpleNamespace(sequence_ids = Ids(ids))]
++    job.sam = ext.BC_SAM()
++    job.sam_match = None
++    job.is_prefill_done = lambda: True
++    return job
++
++
++def make_generator(jobs):
++    g = Generator.__new__(Generator)
++    g.hybrid_draft_tokens = H
++    g.active_jobs = list(jobs)
++    g.model = SimpleNamespace(config = SimpleNamespace(vocab_size = VOCAB))
++    g.hybrid_rounds = 0
++    g._draft_conf_round = "regular"
++    return g
++
++
++A = list(range(100, 110))     # 10 tokens: the repeated suffix, a match of 10 >= H
++B = list(range(200, 212))     # 12 tokens that followed A's first occurrence
++
++
++def in_vocab(t):
++    return bool(((t >= 0) & (t < VOCAB)).all())
++
++
++def test_plain_context_fires_as_upstream():
++    g = make_generator([make_job(A + B + A)])
++    out = g.iterate_hybrid_gen(None)
++    assert out.tolist() == [B[:H]]
++    assert g.hybrid_rounds == 1 and g._draft_conf_round is None
++
++
++def test_placeholder_in_continuation_never_qualifies():
++    for bad in (IMG, VOCAB):
++        context = B[:3] + [bad] + B[4:]
++        job = make_job(A + context + A)
++        # Without the guard this continuation (8 tokens, match of 10) would be the round's draft
++        long, matched = job.get_hybrid_draft(H)
++        assert matched >= H and long.shape[-1] == H and bad in long[0].tolist()
++        job.sam, job.sam_match = ext.BC_SAM(), None
++        g = make_generator([job])
++        regular = torch.tensor([[1, 2, 3, 4, 5, 6, 7]])
++        assert g.iterate_hybrid_gen(regular) is regular
++        assert g.iterate_hybrid_gen(None) is None
++        assert g.hybrid_rounds == 0
++
++
++def test_padding_rows_are_cut_and_masked():
++    qualifying = make_job(A + B + A)
++    # Second row: its continuation is cut at the placeholder, then padded with its last valid token
++    partial = make_job([7] + list(range(300, 310)) + [400, 401, IMG, 402] + list(range(300, 310)))
++    # Third row: no earlier match and a context ending in a placeholder; the fallback fill is its last token
++    trailing = make_job([5, 6, IMG + 3])
++    g = make_generator([qualifying, partial, trailing])
++    out = g.iterate_hybrid_gen(None)
++    assert out.shape == (3, H)
++    assert out[0].tolist() == B[:H]
++    assert out[1].tolist() == [400, 401] + [401] * (H - 2)
++    assert out[2].tolist() == [0] * H
++    assert in_vocab(out)
++    assert g.hybrid_rounds == 1
++
++
++def test_regular_draft_rows_are_kept():
++    qualifying = make_job(A + B + A)
++    other = make_job([1, 2, 3, IMG, 4])
++    regular = torch.tensor([B[:4], [11, 12, 13, 14]])
++    g = make_generator([qualifying, other])
++    out = g.iterate_hybrid_gen(regular)
++    assert out[0].tolist() == B[:H]
++    assert out[1].tolist() == [11, 12, 13, 14] + [14] * (H - 4)
++    assert in_vocab(out)
