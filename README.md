@@ -86,7 +86,9 @@ Ready-made clients: [examples/](examples) (curl chat, streaming, tool call round
 
 The dated [comparison](docs/GLM_QWEN_COMPARISON_2026-10-14.md) records throughput,
 cold-prefill latency and the 92-scenario tool suite. GLM scored 90/100 and Qwen
-85/100 at backend defaults; both failed the benchmark safety gate. Rate units,
+85/100 at backend defaults and explicit maximum effort; all four runs failed
+the benchmark safety gate. Qwen maximum is its supported `xhigh`, since its
+template rejects literal `max`. Rate units,
 limited cells and effort application are explicit in the report.
 
 ## Settings
