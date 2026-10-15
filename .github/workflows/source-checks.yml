@@ -34,3 +34,5 @@ jobs:
         run: |
           python -m unittest discover -s service/tests/http -v
           python service/scripts/check_response_lifetime_ast.py
+      - name: Reproduce cold graph capture scheduling on CPU
+        run: python experiments/tp-graph-capture/test_capture_schedule.py
