@@ -106,6 +106,34 @@ def _loose_value(raw, kind):
     return (True, value) if ok else (False, None)
 
 
+def _argument_pairs(text):
+    """Consume argument tags once; incomplete model output must not backtrack."""
+    position = 0
+    while position < len(text):
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if position == len(text):
+            return
+        start = position
+        if not text.startswith("<arg_key>", position):
+            raise ValueError("Malformed model tool arguments")
+        key_start = position + len("<arg_key>")
+        key_end = text.find("</arg_key>", key_start)
+        if key_end < 0:
+            raise ValueError("Malformed model tool arguments")
+        position = key_end + len("</arg_key>")
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if not text.startswith("<arg_value>", position):
+            raise ValueError("Malformed model tool arguments")
+        value_start = position + len("<arg_value>")
+        value_end = text.find("</arg_value>", value_start)
+        if value_end < 0:
+            raise ValueError("Malformed model tool arguments")
+        position = value_end + len("</arg_value>")
+        yield start, position, text[key_start:key_end], text[value_start:value_end]
+
+
 def parse_call(block, tools, strict_names=True, strict_args=None):
     """The GLM template uses arg_key/arg_value pairs, not a JSON call body.
 
@@ -126,7 +154,6 @@ def parse_call(block, tools, strict_names=True, strict_args=None):
             raise ValueError(f"Model called an unadvertised function: {name}")
         print(f"Passing through a call to an unadvertised function: {name!r}", flush=True)
         function = {}
-    pairs = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.DOTALL)
     arguments = {}
     rest = block[len(block) - len(block.lstrip()):]
     rest = rest[len(name):]
@@ -136,10 +163,9 @@ def parse_call(block, tools, strict_names=True, strict_args=None):
     properties = parameters.get("properties") if isinstance(parameters, dict) else None
     properties = properties if isinstance(properties, dict) else {}
     position = 0
-    for match in pairs.finditer(rest):
-        if rest[position:match.start()].strip():
+    for start, end, key, raw in _argument_pairs(rest):
+        if rest[position:start].strip():
             raise ValueError("Malformed model tool arguments")
-        key, raw = match.groups()
         key = key.strip()
         if not key or key in arguments:
             raise ValueError("Empty or repeated model tool argument")
@@ -164,7 +190,7 @@ def parse_call(block, tools, strict_names=True, strict_args=None):
                 else:
                     value = raw
         arguments[key] = value
-        position = match.end()
+        position = end
     if rest[position:].strip():
         raise ValueError("Malformed model tool arguments")
     return {"id": "call_" + uuid.uuid4().hex, "type": "function",
