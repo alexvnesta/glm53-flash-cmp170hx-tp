@@ -6,8 +6,9 @@ behavioral steering experiment, not a measured speed optimization. Do not use it
 to address a stalled server.
 
 The public [GLP specification](https://github.com/msuiche/weightless/blob/main/docs/spec/GLP.md)
-and [ExLlamaV3 hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm53-exl3-steering-projective.py)
-already describe this integration. Sources inspected at Weightless commit
+and [EXL3-quantized vLLM hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm53-exl3-steering-projective.py)
+describe the GLP operation. Despite its filename, that hotfix targets a vLLM
+fork, not the ExLlamaV3 engine used here. Sources inspected at Weightless commit
 `39fec2374520d7c759976a027335da21d8a4fcff`. This implementation is original code;
 it does not vendor that repository or download its model/vector assets.
 
@@ -90,6 +91,11 @@ and incompatible shapes fail closed. Conversion/capture workflows are refused.
 layer mapping, zero-alpha identity and execution of the actual engine forward
 method with CPU collaborators to verify capture ordering and prefill early exit.
 The separate preparation test proves the input transformer remains unchanged.
+The kernel also compiled for explicit SM80 using the host's existing Triton with
+`CUDA_VISIBLE_DEVICES` empty, without exposing GPUs or launching any kernel:
+16 warps, 64 bytes shared memory, 38081-byte PTX and 22688-byte cubin.
+Reproduce on Linux with `python compile_sm80.py /ABS/NEW/output`. Compilation
+does not establish numerical correctness, launch viability or runtime latency.
 
 Before enabling a candidate: compare the fused kernel to a Torch FP32 reference
 for representative rows; run target/draft/TP checks; measure acceptance and
