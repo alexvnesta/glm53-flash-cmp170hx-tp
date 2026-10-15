@@ -1,0 +1,17 @@
+--- a/exllamav3/exllamav3_ext/graph.cu
++++ b/exllamav3/exllamav3_ext/graph.cu
+@@ -51,8 +51,12 @@
+ cudaStream_t Graph::capture_begin()
+ {
+     TORCH_CHECK(!capture_stream && !capture_active, "Graph: capture already active");
+-    // Surface an earlier asynchronous fault before starting a new capture.
+-    AT_CUDA_CHECK(cudaDeviceSynchronize());
++    // Do not wait for queued TP collectives here. Another rank may already
++    // be waiting for this rank to enqueue the next collective, especially
++    // when only one rank owns a shared-expert graph. Capture uses its own
++    // nonblocking stream; replay is enqueued on the original ordered stream.
++    // Check pending launch errors without a device-wide synchronization.
++    AT_CUDA_CHECK(cudaGetLastError());
+     // The thread's cuBLAS handle (and torch's workspace for it) must exist before capture: a slot
+     // warmed on another thread (the loader's) may capture on this one, and creating the handle
+     // allocates, which a thread-local capture forbids. A no-op once the handle exists

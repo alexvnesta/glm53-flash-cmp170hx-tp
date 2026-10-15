@@ -39,3 +39,12 @@ jobs:
           python -m pip install -r experiments/weightless/requirements-test.txt
           python -m pytest -q experiments/weightless/test_weightless.py
           python service/tests/test_weightless_options.py
+      - name: Reproduce cold graph capture scheduling on CPU
+        run: python experiments/tp-graph-capture/test_capture_schedule.py
+      - name: Reproduce the Weightless variant manifest
+        run: |
+          python experiments/weightless/prepare_engine.py engine-src "$RUNNER_TEMP/weightless-engine"
+          git -C "$RUNNER_TEMP/weightless-engine" apply "$GITHUB_WORKSPACE/experiments/tp-graph-capture/0001-nonblocking-graph-capture.patch"
+          git -C "$RUNNER_TEMP/weightless-engine" apply "$GITHUB_WORKSPACE/experiments/tp-graph-capture/0002-release-gil-during-gated-mlp.patch"
+          cd "$RUNNER_TEMP/weightless-engine"
+          sha256sum -c "$GITHUB_WORKSPACE/profiles/weightless/engine.sha256"
