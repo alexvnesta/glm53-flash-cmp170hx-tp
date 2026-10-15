@@ -47,6 +47,24 @@ The installed nonblocking observer now captures each spawned worker separately.
 
 ## CPU verification and next qualification
 
+The 21:53 EDT recurrence supplied both worker stacks: the GPU worker was
+blocked in `resource_sharer` authentication while rebuilding a Torch shared
+tensor; the parent held the GIL in the same native GatedMLP call. The second
+patch releases the GIL around that call, allowing Python's FD server to run
+while native CUDA operations wait. It changes no tensor arithmetic or ABI.
+
+`test_gil_handshake.py` compiles the actual original and guarded binding line
+around a bounded native wait. It sends a real CPU Torch tensor to a spawned
+worker using file_descriptor sharing. The held-GIL call times out because the
+FD handshake cannot run; the guarded call completes. Both workers then receive
+the tensor and exit cleanly. Verified with Torch2.14.1/Python3.13, GPUs hidden:
+one test with original and patched subcases passed in14.5s. Run this additional
+test on Linux with Torch installed, without allocating GPU memory:
+
+```sh
+CUDA_VISIBLE_DEVICES= python experiments/tp-graph-capture/test_gil_handshake.py
+```
+
 After the normal engine source reproduction:
 
 ```sh
