@@ -34,3 +34,7 @@ jobs:
         run: |
           python -m unittest discover -s service/tests/http -v
           python service/scripts/check_response_lifetime_ast.py
+      - name: Check optional Weightless format and engine hook on CPU
+        run: |
+          python -m pip install -r experiments/weightless/requirements-test.txt
+          python -m pytest -q experiments/weightless/test_weightless.py
