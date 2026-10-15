@@ -88,14 +88,49 @@ def make_projector(environ=None):
                           environ.get("GLM_WEIGHTLESS_BASE_REVISION"))
     LOG.warning("EXPERIMENTAL Weightless GLP enabled: sha256=%s alpha=%s layers=%s",
                 environ["GLM_WEIGHTLESS_SHA256"], alpha, sorted(vectors))
-    return Projector(vectors, alpha)
+    return Projector(vectors, alpha, environ.get("GLM_WEIGHTLESS_VALIDATE") == "1",
+                     environ.get("GLM_WEIGHTLESS_RECEIPTS"))
 
 
 class Projector:
-    def __init__(self, vectors, alpha):
+    def __init__(self, vectors, alpha, require_validation=False, receipts=None):
         self.vectors = vectors
         self.alpha = alpha
         self.devices = {}
+        self.require_validation = require_validation
+        self.validated = set()
+        self.receipts = receipts
+
+    def validate_device(self, device):
+        """Run bounded numerical checks once, during collective-free warmup."""
+        import json
+        import numpy as np
+        import torch
+        from exllamav3.util.weightless_kernel import project_in_place
+        rng = np.random.default_rng(20261014)
+        direction = next(iter(self.vectors.values()))
+        gpu_direction = torch.from_numpy(direction).to(device)
+        reference_direction = direction.astype(np.float64)
+        cases = []
+        for rows in (1, 2, 7, 8, 31, 64):
+            original = rng.standard_normal((rows, WIDTH), dtype=np.float32)
+            for alpha in (0.0, 1.0, 2.0):
+                value = torch.from_numpy(original.copy()).to(device)
+                project_in_place(value, gpu_direction, alpha)
+                actual = value.cpu().numpy()
+                reference = original.astype(np.float64)
+                reference -= alpha * (reference @ reference_direction)[:, None] * reference_direction
+                np.testing.assert_allclose(actual, reference, rtol=1e-4, atol=1e-4)
+                cases.append({"rows": rows, "alpha": alpha,
+                              "max_abs_error": float(np.max(np.abs(actual-reference)))})
+        self.validated.add(device)
+        if self.receipts:
+            root = Path(self.receipts)
+            root.mkdir(parents=True, exist_ok=True)
+            receipt = {"pid": os.getpid(), "device": str(device), "passed": True,
+                       "cases": cases, "operation": "rank_one_projection_fp32"}
+            (root / f"numerics-{device.index}-{os.getpid()}.json").write_text(json.dumps(receipt, indent=2)+'\n')
+        LOG.warning("Weightless GPU numerical check passed on %s: %d cases", device, len(cases))
 
     def __call__(self, block, x, params):
         # DFlash and vision blocks do not have the target mHC architecture.
@@ -109,6 +144,10 @@ class Projector:
         if (x.ndim != 4 or tuple(x.shape[-2:]) != (4, 4096)
                 or x.dtype != torch.float32 or not x.is_contiguous() or x.device.type != "cuda"):
             raise ValueError("steering requires CUDA contiguous FP32 [B,S,4,4096] residuals")
+        if self.require_validation and x.device not in self.validated:
+            if "backend" in params and not params.get("tp_warmup"):
+                raise RuntimeError("Weightless numerical validation must precede TP serving")
+            self.validate_device(x.device)
         # Stock TP/export paths already materialize the residual. This also
         # handles the engine's deferred mHC path if it is enabled in the future.
         from exllamav3.modules.hyperconnections import hc_flush

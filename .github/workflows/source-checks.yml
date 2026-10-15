@@ -38,3 +38,4 @@ jobs:
         run: |
           python -m pip install -r experiments/weightless/requirements-test.txt
           python -m pytest -q experiments/weightless/test_weightless.py
+          python service/tests/test_weightless_options.py
