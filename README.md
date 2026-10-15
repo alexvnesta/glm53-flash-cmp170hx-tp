@@ -1,19 +1,26 @@
 # GLM-5.3-Flash on 2× CMP 170HX (tensor parallel + vision)
 
 ![cards](https://img.shields.io/badge/GPUs-2%C3%97%20CMP%20170HX%2064%20GB-555)
-![engine](https://img.shields.io/badge/engine-ExLlamaV3%20%40%200f685aa-555)
+![engine](https://img.shields.io/badge/engine-ExLlamaV3%20%40%200f 685aa-555)
 ![licence](https://img.shields.io/badge/licence-MIT-blue)
 ![status](https://img.shields.io/badge/status-early%2C%20YMMV-orange)
 
 Run **GLM-5.3-Flash** (320B total, ~18B active MoE) entirely in HBM on **two CMP 170HX 64 GB** cards, with an
-OpenAI-compatible API: tensor parallel across both cards (NCCL over GPU P2P), DFlash2 speculative decoding plus hybrid drafting, up to 393K
+OpenAI-compatible API: tensor parallel across both cards (NCCL over GPU P2P), DFlash 2 speculative decoding plus hybrid drafting, up to 393K
 tokens of context, two agents at once, idle sessions parked in system RAM, and image input.
 
-It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm53-flash-cmp170hx-exl3) and turboderp's
-[ExLlamaV3](https://github.com/turboderp-org/exllamav3); see [CREDITS.md](CREDITS.md).
+It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm 53-flash-cmp 170hx-exl 3) and turboderp's
+[ExLlamaV3](https://github.com/turboderp-org/exllamav 3); see [CREDITS.md](CREDITS.md).
 
 > **Early release.** Everything here runs in production on one machine and passed soak tests, but it hasn't had much
 > real-world use beyond that. Expect rough edges, and please open an issue with what you see.
+
+The [optional Weightless GLP-44 profile](profiles/weightless/README.md) adds a
+fused post-layer projector and native prefill-stall hardening. It is enabled on
+the local host at strength 2 across layers 1–44; see the
+[October 14 validation](docs/WEIGHTLESS_QUALIFICATION_2026-10-14.md). The regular
+launcher remains unsteered, and the performance tables below describe the
+earlier unsteered P16 measurements.
 
 ## What you get
 
@@ -26,10 +33,10 @@ It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm53-fla
 | Two-stream aggregate | **67.25 tok/s**, +7.01% versus stage 1 |
 | Requests at once | **2 active**; more queue |
 | Context | **392,960** tokens including output; shared pool 655,360 |
-| Four idle 220K sessions | Cached restores matched cold outputs; first token in **3.8–4.0s** |
-| Images | GPU0 vision tower, bubblewrap decode, base64 input |
+| Four idle 220K sessions | Cached restores matched cold outputs; first token in **3.8–4.0 seconds** |
+| Images | GPU0 vision tower, bubblewrap decode, base 64 input |
 
-These October 13 measurements used the same machine (PCIe Gen2 x16) and NCCL
+These October 13 measurements used the same machine (PCIe Gen 2 x 16) and NCCL
 P2P transport in both arms. They are workload-specific, not general task-quality
 claims. Two near-limit 327K requests ran sequentially in the pressure probe.
 Max-effort retrieval was 56/56; mixed-traffic soaks retain known model mistakes.
@@ -40,13 +47,13 @@ Earlier layer-split, hybrid and NCCL comparisons remain in
 
 ## What you need
 
-- **Two CMP 170HX that CUDA sees with the full 64 GiB** (65,536 MiB) each, on **x16 links**. This repo doesn't cover getting the
+- **Two CMP 170HX that CUDA sees with the full 64 GiB** (65,536 MiB) each, on **x 16 links**. This repo doesn't cover getting the
   cards to that state.
 - Linux, an NVIDIA driver with CUDA 13 support, the CUDA 13.x toolkit with `nvcc`, Python **3.13**.
 - **~128 GB system RAM** and **~150 GB disk** for the weights.
 - `bwrap` (bubblewrap) for image input. Use `VISION=0` for text-only serving without it.
 
-Tested on: Threadripper 3970X, 128 GB RAM, driver 610.57.04, CUDA 13.3, PyTorch 2.14.1+cu130, Triton 3.8.0.
+Tested on: Threadripper 3970X, 128 GB RAM, driver 610.57.04, CUDA 13.3, PyTorch 2.14.1+cu 130, Triton 3.8.0.
 
 ## Quick start
 
@@ -67,7 +74,7 @@ Then try it:
 python3 examples/image.py screenshot.png "What's on this screen?"
 ```
 
-To keep it running, see [systemd/glm53-flash.service.example](systemd/glm53-flash.service.example).
+To keep it running, see [systemd/glm 53-flash.service.example](systemd/glm 53-flash.service.example).
 
 ## Using the API
 
@@ -77,7 +84,7 @@ Any OpenAI-compatible client works with base URL `http://127.0.0.1:8012/v1` and 
   `-high`, `-max`. The default is `high`. `max` is much slower on everyday prompts but more careful on hard lookups.
 - **Tools:** standard OpenAI `tools` / `tool_calls`, streaming or not.
 - **Images:** content parts with `{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}` in user messages.
-  PNG, JPEG or WebP; up to 16 images per request. Remote image URLs are refused, so clients must send base64.
+  PNG, JPEG or WebP; up to 16 images per request. Remote image URLs are refused, so clients must send base 64.
 - **Endpoints:** `/v1/chat/completions`, `/v1/completions`, `/v1/models`, `/tokenize`, `/health`.
 
 Ready-made clients: [examples/](examples) (curl chat, streaming, tool call round trip, image question).
@@ -117,7 +124,7 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 - **`apply_engine.sh` reports a hash mismatch:** delete `engine-src/` and run it again. The server checks engine files at
   startup and refuses to start vision or concurrency on a modified engine.
-- **"missing native/exllamav3_ext…":** run `./engine/build_native.sh` with the venv's Python 3.13 and CUDA 13.x `nvcc` on `PATH`.
+- **"missing native/exllamav 3_ext…":** run `./engine/build_native.sh` with the venv's Python 3.13 and CUDA 13.x `nvcc` on `PATH`.
 - **Out of GPU memory at startup or with big images:** close anything else on the GPUs. `VISION=0` frees the vision tower's ~0.4 GB on GPU 0.
 - **First start is slow:** it loads ~117 GiB of weights, compiles any missing Triton kernels and captures CUDA graphs (2-3 minutes).
 - **"bwrap not found":** install `bubblewrap` or set `VISION=0`. Image serving refuses to start without the sandbox.
@@ -137,9 +144,9 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Other setups
 
-- **Two cards, simpler:** [Flun/glm53-flash-cmp170hx-exl3](https://github.com/Flun/glm53-flash-cmp170hx-exl3), the layer-split
+- **Two cards, simpler:** [Flun/glm 53-flash-cmp 170hx-exl 3](https://github.com/Flun/glm 53-flash-cmp 170hx-exl 3), the layer-split
   original this repo extends.
-- **Four cards:** [Morrowmake/glm53-flash-cmp170hx-recipe](https://github.com/Morrowmake/glm53-flash-cmp170hx-recipe) runs a vLLM
+- **Four cards:** [Morrowmake/glm 53-flash-cmp 170hx-recipe](https://github.com/Morrowmake/glm 53-flash-cmp 170hx-recipe) runs a vLLM
   fork with 4-bit weights on 4× CMP 170HX with P2P (482 tok/s single-user structured, by their measurement). Its weights don't
   fit on two cards.
 
@@ -147,9 +154,9 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 | component | detail |
 |---|---|
-| Model | [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), 3.05 bpw (rev `332ab457`), ~116.6 GiB |
-| Drafter | [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2) (rev `bf582e4e`), converted locally to EXL3 6 bpw, 7 draft tokens |
-| Engine | ExLlamaV3 at `0f685aa9fd` + [4 patches](engine/NOTES.md): cache ring, fair scheduling, image draft-id guard and SWA checkpoint fix. TP DFlash2, hybrid drafting and recurrent paired states use upstream implementations |
+| Model | [turboderp/GLM-5.3-Flash-exl 3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl 3), 3.05 bpw (rev `332ab457`), ~116.6 GiB |
+| Drafter | [incoai/GLM-5.3-Flash-DFlash 2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash 2) (rev `bf582e4e`), converted locally to EXL3 6 bpw, 7 draft tokens |
+| Engine | ExLlamaV3 at `0f685aa9fd` + [4 patches](engine/NOTES.md): cache ring, fair scheduling, image draft-id guard and SWA checkpoint fix. TP DFlash 2, hybrid drafting and recurrent paired states use upstream implementations |
 | Server | [service/](service): Flun's server plus TP serving, two-session scheduler, prefix cache, RAM tier, vision, hybrid drafting |
 | TP backend | NCCL 2.30.7 over GPU P2P (transport P2P/CUMEM); `native` (host-RAM all-reduce) as fallback |
 | Target KV cache | Q8, 655,360-token shared pool |
@@ -175,5 +182,5 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 ## Licences
 
 MIT ([LICENSE](LICENSE)). The server is derived from Flun's MIT repo and the engine patches modify turboderp's MIT ExLlamaV3
-([NOTICE.md](NOTICE.md)). **No model weights are included.** The DFlash2 drafter is CC-BY-NC-ND-4.0: `get_models.sh` converts
+([NOTICE.md](NOTICE.md)). **No model weights are included.** The DFlash 2 drafter is CC-BY-NC-ND-4.0: `get_models.sh` converts
 it on your machine; please don't share converted copies.

@@ -1,12 +1,13 @@
 # Optional Weightless GLP experiment
 
-Status: implemented and CPU-tested, **not GPU-qualified or deployed**. The normal
-engine recipe, service, native binary and pin tables are unchanged. This is a
-behavioral steering experiment, not a measured speed optimization. Do not use it
-to address a stalled server.
+Status: GPU-validated and enabled on the local two-CMP host at strength 2,
+layers 1–44. See the [profile](../../profiles/weightless/README.md) and
+[bounded qualification](../../docs/WEIGHTLESS_QUALIFICATION_2026-10-14.md).
+The normal engine recipe and launcher retain their unsteered defaults. Steering
+changes behavior; a general speed or intelligence improvement is unmeasured.
 
 The public [GLP specification](https://github.com/msuiche/weightless/blob/main/docs/spec/GLP.md)
-and [EXL3-quantized vLLM hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm53-exl3-steering-projective.py)
+and [EXL3-quantized vLLM hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm 53-exl 3-steering-projective.py)
 describe the GLP operation. Despite its filename, that hotfix targets a vLLM
 fork, not the ExLlamaV3 engine used here. Sources inspected at Weightless commit
 `39fec2374520d7c759976a027335da21d8a4fcff`. This implementation is original code;
@@ -31,10 +32,10 @@ A single Triton reduction/update kernel runs per selected layer and rank.
 After the initial direction upload/JIT, it creates no full residual projection
 temporary, transfers no residual to CPU and adds no host synchronization.
 Directions require 64 KiB per layer per rank, at most 2.75 MiB for layers 1–44.
-One block per token with 16 warps is a starting configuration, not a measured
-optimum. Latency, numerical tolerance, throughput and DFlash acceptance on the
-two CMP170HX cards remain unmeasured. No upstream hardware results are claimed
-for this setup.
+One block per token with 16 warps is the validated starting configuration,
+not a measured optimum. GPU numerics, functional behavior and a five-minute
+soak passed on both cards. Comparative latency, throughput and DFlash acceptance
+deltas remain unmeasured. No upstream hardware results are claimed for this setup.
 
 ## Prepare a separate tree
 
@@ -78,11 +79,11 @@ There is no calibrated default alpha for this EXL3 quantization. The `[0,2]`
 experiment bound is not a quality/safety guarantee. Alpha zero preserves the
 original tensor operations and deferred state, though the file is still checked.
 
-Only little-endian GGUF v3, GLP spec v1, explicit `project` mode, rank one and
+Only little-endian GGUF v 3, GLP spec v 1, explicit `project` mode, rank one and
 `residual_stream_post_layer` are supported. Directions must be finite nonzero
 1D F32 vectors of width 16384. `direction.N` applies at layer N with no offset;
 only layers 1–44 are expressible. Declared layers and tensor names must agree.
-Additive/legacy vectors, rank-k, spec v2, alpha scaling, model-revision mismatch
+Additive/legacy vectors, rank-k, spec v 2, alpha scaling, model-revision mismatch
 and incompatible shapes fail closed. Conversion/capture workflows are refused.
 
 ## Verification boundary
@@ -97,7 +98,8 @@ The kernel also compiled for explicit SM80 using the host's existing Triton with
 Reproduce on Linux with `python compile_sm80.py /ABS/NEW/output`. Compilation
 does not establish numerical correctness, launch viability or runtime latency.
 
-Before enabling a candidate: compare the fused kernel to a Torch FP32 reference
-for representative rows; run target/draft/TP checks; measure acceptance and
-latency at the same effort and concurrency; then complete functional and soak
-checks. This is required work, not evidence already obtained.
+The active profile also passed two startup-custody tests, 18 FP64-reference
+numerical cases on each GPU (maximum absolute error 2.386e-7), 31 functional and
+cold-tail requests, and 153 requests over 300.315 seconds of soak. Details and limitations
+are in the qualification record. The optional startup gate requires current
+GPU receipts before API readiness. Broad quality/speed comparisons remain open.
