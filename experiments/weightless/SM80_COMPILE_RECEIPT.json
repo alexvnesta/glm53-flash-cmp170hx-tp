@@ -1,0 +1,17 @@
+{
+  "target": "sm80",
+  "triton_version": "3.8.0",
+  "gpu_visible": false,
+  "kernel_launched": false,
+  "num_warps": 16,
+  "shared_bytes": 64,
+  "ptx_bytes": 38081,
+  "cubin_bytes": 22688,
+  "kernel_source_sha256": "2e6f46922672f706e334cd423b59c941ff75c7bc1a5211140b4667d4d3774b35",
+  "cuobjdump_resource_usage": {
+    "registers": 114,
+    "stack_bytes": 0,
+    "local_bytes": 0,
+    "shared_bytes": 0
+  }
+}
