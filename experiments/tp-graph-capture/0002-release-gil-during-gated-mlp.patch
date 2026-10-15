@@ -1,11 +1,6 @@
 --- a/exllamav3/exllamav3_ext/libtorch/mlp_bc.h
 +++ b/exllamav3/exllamav3_ext/libtorch/mlp_bc.h
-@@ -37,7 +37,7 @@
-     py::arg("down"),
-     py::arg("act_limit")
+@@ -39,2 +39,2 @@
  )
 -.def("run_bszN", &BC_GatedMLP::run_bszN);
 +.def("run_bszN", &BC_GatedMLP::run_bszN, py::call_guard<py::gil_scoped_release>());
- 
- py::class_<BC_MLP, std::shared_ptr<BC_MLP>>(m, "BC_MLP").def
- (
