@@ -15,6 +15,13 @@ It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm53-fla
 > **Early release.** Everything here runs in production on one machine and passed soak tests, but it hasn't had much
 > real-world use beyond that. Expect rough edges, and please open an issue with what you see.
 
+The [optional Weightless GLP-44 profile](profiles/weightless/README.md) adds a
+fused post-layer projector and native prefill-stall hardening. It is enabled on
+the local host at strength 2 across layers 1–44; see the
+[October 14 validation](docs/WEIGHTLESS_QUALIFICATION_2026-10-14.md). The regular
+launcher remains unsteered, and the performance tables below describe the
+earlier unsteered P16 measurements.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

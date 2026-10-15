@@ -321,6 +321,8 @@ async def lifespan(app):
             if not model.loaded_tp or draft_model is None:
                 raise ValueError("The engine did not load the requested TP target with a DFlash2 drafter")
         runtime["tp_runtime"] = None if tp_settings is None else glm_tp_runtime.verify(model, tp_settings)
+        from glm_weightless_options import runtime_status as weightless_status
+        runtime["weightless"] = weightless_status(getattr(model, "active_devices", [0]))
         if dflash:
             if not draft_model.caps.get("dflash_draft") or draft_model.config.block_size != 8:
                 raise ValueError("This API requires a DFlash2 block-size-8 drafter")
@@ -434,6 +436,7 @@ async def health():
     concurrent = getattr(generator, "_glm_native_concurrency", None) if runtime["concurrency"].enabled else None
     b2_cache = getattr(generator, "_glm_b2_retention", None)
     return {"status": "ok", "engine": "ExLlamaV3", "model": MODEL_ID, "context_length": runtime["context_length"],
+            "weightless": runtime.get("weightless", {"enabled": False}),
             "cache_tokens": runtime["args"].cache_size,
             "context_cap": runtime.get("context_cap"),
             **runtime.get("cache_geometry", {}),
