@@ -2,7 +2,7 @@
 
 The optional profile was activated on October 14, 2026 (EDT), with API readiness
 at 02:20:21UTC on October 15. It applies strength 2.0 at target layers 1–44 on both
-TP ranks. Vision, DFlash 2 K7/hybrid 15, the two active slots, Q8 cache 655360,
+TP ranks. Vision, DFlash2 K7/hybrid 15, the two active slots, Q8 cache 655360,
 context 392960, shared prefix/RAM retention and GLM-default/Qwen-explicit routing
 are preserved. No clocks, links, drivers, model weights or client settings changed.
 

@@ -7,7 +7,7 @@ The normal engine recipe and launcher retain their unsteered defaults. Steering
 changes behavior; a general speed or intelligence improvement is unmeasured.
 
 The public [GLP specification](https://github.com/msuiche/weightless/blob/main/docs/spec/GLP.md)
-and [EXL3-quantized vLLM hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm 53-exl 3-steering-projective.py)
+and [EXL3-quantized vLLM hotfix](https://github.com/msuiche/weightless/blob/main/patches/hotfix-glm53-exl3-steering-projective.py)
 describe the GLP operation. Despite its filename, that hotfix targets a vLLM
 fork, not the ExLlamaV3 engine used here. Sources inspected at Weightless commit
 `39fec2374520d7c759976a027335da21d8a4fcff`. This implementation is original code;

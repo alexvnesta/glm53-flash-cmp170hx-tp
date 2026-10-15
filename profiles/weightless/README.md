@@ -1,6 +1,6 @@
 # Weightless GLP-44 profile for two CMP170HX cards
 
-This explicit variant keeps the P16 TP/DFlash 2/cache/vision settings, adds the
+This explicit variant keeps the P16 TP/DFlash2/cache/vision settings, adds the
 GLP-44 post-layer projector, and uses the two native stall-hardening patches.
 The regular launcher and baseline engine manifest retain their original defaults.
 
