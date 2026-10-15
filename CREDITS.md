@@ -11,6 +11,10 @@
   the vision tower support, native DFlash2, sliding-window draft state and recurrent paired checkpoints.
 - **Z.ai**, GLM-5.3-Flash.
 - **incoai**, the [GLM-5.3-Flash DFlash2 drafter](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
+- **msuiche**, [Weightless](https://github.com/msuiche/weightless): the GLP format,
+  projective steering method and gated [GLP-44 vector](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44).
+  The ExLlamaV3 adapter and fused kernel here are original code. The vector is
+  obtained separately with authorized access and is not redistributed.
 - **0xSero**, the historical `k_hcfuse` fused hyper-connection kernels (via Flun's repo).
   The rebased launcher uses upstream hyper-connection handling; the separate JIT kernel is no longer required.
 - **MiaAI-Lab**, the DFlash2 EXL3 conversion reference Flun credits.
