@@ -1,0 +1,27 @@
+GLM-5.3-Flash on 2x CMP170HX 64GB
+ExLlama3 TP2, 3.05bpw, Weightless alpha 2, K7 + hybrid-15
+Four agents actively generating, retained 32-row kernel
+
+Effort  Total tok/s  Per-agent tok/s              24-task completion
+Low     156.3        41.5 / 37.7 / 36.4 / 40.7   38.6 seconds
+High    144.1        46.1 / 22.9 / 37.5 / 37.6   41.3 seconds
+
+Same fixed mixed JSON/coding tasks, temperature 0, 768-token output budget.
+Rates count actual completion tokens including reasoning. Per-agent rates
+are measured over the same wall time. Four-agent cells were repeated twice.
+All 384 scored tasks and 32 warmups across both kernel variants passed.
+
+The 64-row experiment delivered 155.0 tok/s low and 146.4 high (-0.8%, +1.6%).
+It missed the deployment gate. Its low-effort tasks finished in 35.8 seconds,
+but it generated 7.9% fewer tokens; token throughput did not improve.
+Production keeps the 32-row kernel and enables four active sequences.
+
+Context/cache: four independent 128K prompts passed. A 389K + 3x64K pack also
+passed, including after a process restart. The shared active GPU cache is
+655,360 tokens. The 8 GiB RAM KV tier, separate 5 GiB paired-state RAM tier,
+and 50 GiB disk cache retain idle histories; they do not extend active GPU
+context capacity. Four independent 256K contexts exceed that GPU pool.
+
+These are synthetic workload results on this host, not a broad coding-quality
+ranking. Methods and complete receipts:
+https://github.com/alexvnesta/glm53-flash-cmp170hx-tp/blob/main/docs/VERIFICATION_ROWS_2026-10-16.md

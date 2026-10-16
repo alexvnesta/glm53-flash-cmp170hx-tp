@@ -64,8 +64,18 @@ four-way drafting and verification with the same tasks and low/high efforts.
 Four-agent aggregate delivery improves from **134.8 to 155.5 tok/s at low effort**
 and **125.0 to 143.7 tok/s at high effort**. All 384 scored tasks pass. The report
 includes actual per-agent rates, time to finish, token counts and retained
-CPU-confounded controls. Four slots remain experimental; production defaults
-to the qualified two-slot profile pending broader runtime qualification.
+CPU-confounded controls. The [runtime follow-up](docs/FOUR_SLOT_RUNTIME_2026-10-16.md)
+also passes four independent 128K contexts, a 389K-plus-three-64K pack, a
+192-request soak and deep cache recovery after restart. The regular launcher
+defaults to two slots; the four-slot variant remains an explicit configuration.
+
+The [four-agent verification follow-up](docs/VERIFICATION_ROWS_2026-10-16.md)
+profiles the wider hybrid batches and tests a 64-row cooperative variant.
+Four-agent delivery changes by −0.8% at low effort and +1.6% at high effort,
+missing the selection gate. Local production now runs **four active agents
+with the retained 32-row kernel**, after the runtime qualification and another
+router-facing canary/restart. The report gives aggregate/per-agent tok/s,
+completion time and output lengths for both variants at every tested effort.
 
 ## What you get
 
@@ -163,6 +173,10 @@ limited cells and effort application are explicit in the report.
 | `TRITON_CACHE_DIR` | Triton default | optional cache directory; measurements used pinned host FLA choices, described in [engine notes](engine/NOTES.md) |
 | `TP_BACKEND` | `nccl` | tensor-parallel backend: `nccl` reduces GPU-to-GPU over P2P (+4-6 % decode, +10 % prefill here); `native` goes through system RAM. Run `scripts/p2p_check.py` first; if it fails, use `native` |
 
+See [RAM KV capacity](docs/RAM_KV_CAPACITY.md) for the distinction between
+retaining parked sessions and fitting four actively decoding contexts. The
+RAM and disk tiers do not extend the shared active GPU context budget.
+
 ## How two agents share the cards
 
 Two requests generate at the same time; a third waits for a free slot. The two active requests share a 655,360-token cache, so
@@ -218,7 +232,7 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 | Model | [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), 3.05 bpw (rev `332ab457`), ~116.6 GiB |
 | Drafter | [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2) (rev `bf582e4e`), converted locally to EXL3 6 bpw, 7 draft tokens |
 | Engine | ExLlamaV3 at `0f685aa9fd` + [9 patches](engine/NOTES.md): the four P16 patches, selected upstream FP16/recovery/logit checks, and persistent-cache profile identity. TP DFlash2, hybrid drafting and recurrent paired states use upstream implementations |
-| Server | [service/](service): Flun's server plus TP serving, two-session scheduler, prefix cache, RAM tier, vision, hybrid drafting |
+| Server | [service/](service): Flun's server plus TP serving, bounded concurrent scheduler (two default, four opt-in), prefix cache, RAM tier, vision, hybrid drafting |
 | TP backend | NCCL 2.30.7 over GPU P2P (transport P2P/CUMEM); `native` (host-RAM all-reduce) as fallback |
 | Target KV cache | Q8, 655,360-token shared pool |
 | Draft state | Native FP16 sliding-window rings; 2,560 rows per active slot |

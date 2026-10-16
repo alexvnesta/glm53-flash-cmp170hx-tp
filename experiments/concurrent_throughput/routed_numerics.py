@@ -17,6 +17,7 @@ def main(a):
     assert not subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader'],text=True).strip(),'Exclusive GPU window required'
     sys.path[:0]=[str(a.profile/'native'),str(a.profile/'engine'),str(a.profile/'engine/tests')]
     import torch
+    import exllamav3_ext as ext
     path=a.profile/'engine/tests/kernels/moe/test_moe_coop.py'
     ns={'__name__':'routed_dense_oracle','__file__':str(path)}
     exec(oracle_code(path.read_text(),str(path)),ns)
@@ -30,7 +31,7 @@ def main(a):
     try:
         for device in (0,1):
             assert torch.cuda.get_device_capability(device)==(8,0)
-            for rows in (1,2,4,7,8,9,16,17,24,31,32):
+            for rows in (1,2,4,7,8,9,16,17,24,31,32)+((33,48,63,64) if ext.decode_max_rows==64 else ()):
                 out=ns['run_case'](torch.device(f'cuda:{device}'),20261016+rows,3,3,3,2,
                     bsz=rows,H=4096,Hi=4096,I=2048,Ho=4096,H_out=4096,E=8,topk=8,
                     min_e=1,max_e=9,empty_rows=True,limit=10.,gu_f32=True)
