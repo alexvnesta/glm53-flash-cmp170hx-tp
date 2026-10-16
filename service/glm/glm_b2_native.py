@@ -80,10 +80,12 @@ class B2Retention:
         self.namespace = namespace or uuid.uuid4().hex
         self.attached = False
         self.closed = False
+        self.closing = False
         self.failure = None
         self.metrics = Counter(dict.fromkeys(COUNTERS, 0))
         self.jobs = {}
         self.tier = None
+        self.disk = None
         self.shared = None
 
     def configure_shared_chat(self, tokens, template, tokenizer, renderer):
@@ -113,12 +115,17 @@ class B2Retention:
             # Existing terminal and deadline/cancellation BaseExceptions pass.
             self._terminal(error)
         if (self.generator.recurrent_cache is not self.native
+                or (not self.closing and getattr(self.generator, 'disk_page_cache', None) is not self.disk)
+                or (not self.closing and getattr(self.native, 'disk_tier', None) is not self.disk)
                 or (self.attached and getattr(self.generator, '_glm_b2_retention', None) is not self)):
             self._terminal(RuntimeError('B2 native checkpoint/coordinator owner changed'))
 
     def _terminal(self, error):
         if self.failure is None:
             self.failure = error
+        disk = getattr(self.generator, 'disk_page_cache', None)
+        if disk is not None:
+            disk.abort()
         raise StopSharedGeneration('Shared B2 native custody is uncertain') from error
 
     def _fence(self):
@@ -247,6 +254,9 @@ class B2Retention:
         interval = kwargs.get('interval', args[0] if args else None)
         if pos == 0 or job.last_recurrent_checkpoint_pos == pos or not job.is_checkpoint_boundary(interval):
             return native_stash(job, cache, *args, **kwargs)
+        if job.recurrent_state.checkpoint_size > cache.max_size:
+            # The upstream budget guard deliberately publishes no stash. The running job stays valid.
+            return native_stash(job, cache, *args, **kwargs)
         try:
             require_settled_replay(job)
         except UnsafeCleanupError as error:
@@ -336,7 +346,7 @@ class B2Retention:
                 'paired_evictions': evictions,
                 'max_checkpoints': None,
                 'kv_only_pages': self.generator.pagetable.metrics.get('alloc_kv_only_pages', 0),
-                'snapshot_budget_skips': 0,
+                'snapshot_budget_skips': metrics.get('stash_skipped_budget', 0),
                 **self.metrics,
                 'native_releases': evictions + pruned, 'pruned': pruned}
 

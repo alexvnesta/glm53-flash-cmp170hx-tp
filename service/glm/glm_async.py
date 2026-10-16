@@ -18,10 +18,18 @@ def responsive_generator_class(base):
             try:
                 while True:
                     async with self.condition:
-                        await self.condition.wait_for(lambda: bool(self.jobs))
+                        while not self.jobs:
+                            if getattr(self.generator, 'has_idle_work', lambda: False)():
+                                try:
+                                    await asyncio.wait_for(self.condition.wait(), timeout=0.25)
+                                except asyncio.TimeoutError:
+                                    break
+                            else:
+                                await self.condition.wait()
                     async with self._step_lock:
+                        operation = self.generator.iterate if self.jobs else self.generator.idle_work
                         future = asyncio.get_running_loop().run_in_executor(
-                            self._gpu_worker, self.generator.iterate)
+                            self._gpu_worker, operation)
                         try:
                             results = await asyncio.shield(future)
                         except asyncio.CancelledError:
@@ -29,12 +37,18 @@ def responsive_generator_class(base):
                             # step still reads the job/page table being cancelled.
                             await future
                             raise
-                        self.deliver_results(results)
+                        if results is not None:
+                            self.deliver_results(results)
                     await asyncio.sleep(0)
             except asyncio.CancelledError:
                 return
             except Exception as error:
                 self.error = error
+                # Match upstream's failure policy: uncertain cache contents must
+                # never be persisted for another process, including idle-I/O faults.
+                disk = getattr(self.generator, "disk_page_cache", None)
+                if disk is not None:
+                    disk.abort()
                 for job in self.jobs.values():
                     job.put_result(error)
                 self.jobs.clear()

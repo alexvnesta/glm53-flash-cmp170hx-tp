@@ -3,7 +3,7 @@
 Rank pool code and page-table eviction mechanics remain unchanged, except that
 the copies of one page-table allocation are sent as batched rank RPCs in their
 original order (GLM_B2_TIER_TRANSFER_BATCH, default 256; 0 restores one RPC per
-page copy). This is an uninstalled source candidate. Constructor registration
+page copy). This tier is used by the nonpersistent profile. Constructor registration
 is lazy and does not reserve or copy every target K/V page into host RAM.
 """
 import os

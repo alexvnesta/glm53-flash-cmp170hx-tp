@@ -329,7 +329,7 @@ class TerminalLatch(Base):
 
 
 class AllocationCustody(Base):
-    def test_pair_creation_fault_after_target_slot_is_terminal(self):
+    def test_pair_creation_fault_returns_target_slot_and_next_job_runs(self):
         s = scenario()
         with s.installed():
             g, m, c = s.generator()
@@ -337,11 +337,15 @@ class AllocationCustody(Base):
             def failing():
                 raise AssertionError('injected: no draft slot')
             s.draft_cache.get_new_state = failing
+            custody = c._custody()
             g.enqueue(s.Job(nf.prompt(600), 8))
-            with self.assertRaisesRegex(RuntimeError, 'lost shared native custody'):
-                g.iterate()
-        self.assertIsInstance(c.failure, b2.UnsafeCleanupError)
-        self.assertIn('state slots changed', str(c.failure))
+            results = g.iterate()
+            self.assertTrue(any(r.get('stage')=='error' and 'no draft slot' in str(r.get('error')) for r in results))
+            self.assertIsNone(c.failure)
+            self.assertEqual(c._custody(), custody)
+            s.draft_cache.get_new_state = original
+            s.run([(s.Job(nf.prompt(600, 2), 8), 0)])
+            self.assertIsNone(c.failure)
 
     def test_restored_pair_that_disagrees_with_its_prefix_is_terminal(self):
         """A restore whose draft side does not sit at the resumed position (a broken engine contract) latches."""

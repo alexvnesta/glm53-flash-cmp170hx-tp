@@ -40,6 +40,9 @@ from glm_dflash_options import DFlashOptions, summarize_draft_stats
 from glm_concurrent_options import concurrent_options, CapacityGate
 from glm_b2_options import b2_retention_options
 from glm_body_limit import RequestBodyLimit, body_limit_state
+from glm_request_metrics import RequestMetrics
+from glm_persistence import (persistence_options, profile_identity, identity_digest,
+                             attach_persistence, persistence_health)
 
 # A call to a function the request did not advertise: "pass" hands it to the client as a normal tool call, "error" fails the request.
 UNADVERTISED_TOOL_CALLS = os.environ.get("GLM_UNADVERTISED_TOOL_CALLS", "pass").strip().lower()
@@ -48,7 +51,7 @@ if UNADVERTISED_TOOL_CALLS not in ("pass", "error"):
 
 # Largest accepted request body (GLM_MAX_REQUEST_BYTES, default 32 MiB; an invalid value stops the service at start):
 # a larger one gets 413 before it is parsed. The limiter's state lives in runtime, where /health reads it.
-runtime = {"request_body": body_limit_state(os.environ)}
+runtime = {"request_body": body_limit_state(os.environ), "request_metrics": RequestMetrics()}
 REQUEST_ADMISSION_POLICY = AdmissionPolicy.from_environment()
 
 
@@ -267,6 +270,7 @@ async def lifespan(app):
         require_native_tp_dflash()
     retention = session_options(args)
     b2_retention = b2_retention_options(args, concurrency, retention)
+    persistence = persistence_options(args, b2_retention)
     from glm_b2_options import context_cap_option, cache_geometry
     context_cap = context_cap_option(args)
     draft_options = DFlashOptions.from_environment()
@@ -323,6 +327,13 @@ async def lifespan(app):
         runtime["tp_runtime"] = None if tp_settings is None else glm_tp_runtime.verify(model, tp_settings)
         from glm_weightless_options import runtime_status as weightless_status
         runtime["weightless"] = weightless_status(getattr(model, "active_devices", [0]))
+        runtime["profile_identity"] = profile_identity(Path(model_init.__file__).parent,
+            runtime["native_extension"]["sha256"], runtime["weightless"],
+            "fp32" if args.recurrent_state_fp32 else "fp16")
+        runtime["profile_digest"] = identity_digest(runtime["profile_identity"])
+        runtime["request_metrics"].identity = {"digest": runtime["profile_digest"],
+            "model": MODEL_ID, "recurrent_dtype": runtime["profile_identity"]["recurrent_dtype"],
+            "weightless_alpha": runtime["weightless"].get("alpha")}
         if dflash:
             if not draft_model.caps.get("dflash_draft") or draft_model.config.block_size != 8:
                 raise ValueError("This API requires a DFlash2 block-size-8 drafter")
@@ -374,7 +385,12 @@ async def lifespan(app):
                 paired = bind_b2_retention(runtime["generator"].generator)
                 if b2_retention.target_cpu_bytes:
                     from glm_b2_cpu_cache import attach_b2_target_tier
-                    attach_b2_target_tier(paired, b2_retention.target_cpu_bytes)
+                    if persistence.enabled:
+                        from glm_persistent_tier import B2PersistentCPUPageCache
+                        attach_b2_target_tier(paired, b2_retention.target_cpu_bytes, factory=B2PersistentCPUPageCache)
+                        attach_persistence(paired, persistence, runtime["profile_identity"])
+                    else:
+                        attach_b2_target_tier(paired, b2_retention.target_cpu_bytes)
                 # Shared mode records the exact tier attached above as its epoch.
                 if b2_retention.shared_prefix_tokens:
                     paired.configure_shared_chat(b2_retention.shared_prefix_tokens, template, tokenizer, render_prompt)
@@ -401,7 +417,7 @@ async def lifespan(app):
 app = FastAPI(title="GLM-5.3-Flash EXL3 API", version="1.0", lifespan=lifespan,
               description="Text chat/completions, SSE streaming, separate reasoning_content. "
                           "Context length is reported by /health and /v1/models; "
-                          "one active request; defaults: high reasoning, temperature 1, "
+                          "active-request capacity is reported by /health; defaults: high reasoning, temperature 1, "
                           "top_p 0.95, max_tokens 32768 including reasoning. "
                           "Function calls are returned to the client for execution. "
                           "Multimodal input and JSON schema output are unsupported.")
@@ -437,6 +453,9 @@ async def health():
     b2_cache = getattr(generator, "_glm_b2_retention", None)
     return {"status": "ok", "engine": "ExLlamaV3", "model": MODEL_ID, "context_length": runtime["context_length"],
             "weightless": runtime.get("weightless", {"enabled": False}),
+            "profile_digest": runtime.get("profile_digest"),
+            "recurrent_state_dtype": "fp32" if runtime["args"].recurrent_state_fp32 else "fp16",
+            "persistent_cache": persistence_health(getattr(generator, "disk_page_cache", None)),
             "cache_tokens": runtime["args"].cache_size,
             "context_cap": runtime.get("context_cap"),
             **runtime.get("cache_geometry", {}),
@@ -481,6 +500,7 @@ async def health():
             "fair_chunk_size": getattr(generator, "fair_chunk_size", None),
             "busy": runtime["lock"].active > 0 if runtime["concurrency"].enabled else runtime["lock"].locked(),
             "request_queue": runtime["admission"].statistics(),
+            "request_metrics": runtime["request_metrics"].snapshot(),
             **runtime.get("request_body", {}),
             **({"vision": runtime["vision"].health()} if runtime.get("vision") is not None else {}),
             "generation_defaults": GENERATION_DEFAULTS}
@@ -595,6 +615,7 @@ async def embed_images(prompt, images, prompt_tokens, limit, context_length, req
 
 
 async def complete(body, request, chat):
+    received = time.perf_counter()
     from exllamav3 import AsyncJob, ComboSampler, GreedySampler
     if body.store:
         raise HTTPException(400, "Stored completions are unsupported; use store=false")
@@ -657,10 +678,22 @@ async def complete(body, request, chat):
                    temperature=body.temperature, top_p=body.top_p,
                    freq_p=body.frequency_penalty, pres_p=body.presence_penalty))
     lock = runtime["lock"]
+    ident = ("chatcmpl-" if chat else "cmpl-") + uuid.uuid4().hex
+    observation = (runtime["request_metrics"].start(ident, received=received, prompt_tokens=prompt_tokens,
+                   effort=body.reasoning_effort, streaming=body.stream, images=len(images))
+                   if runtime.get("request_metrics") is not None else None)
     try:
         admission_wait = await runtime["admission"].acquire(lock, request)
     except AdmissionError as error:
+        if observation:
+            observation.fail(error, "rejected")
+            observation.finish({}, {}, "admission")
         raise HTTPException(error.status, str(error))
+    except BaseException as error:
+        if observation:
+            observation.fail(error, "cancelled")
+            observation.finish({}, {}, "admission")
+        raise
     shared = None
     try:
         if runtime["generator"].error:
@@ -681,14 +714,19 @@ async def complete(body, request, chat):
                            min_new_tokens=limit if body.ignore_eos else body.min_tokens,
                            stop_conditions=stops, sampler=sampler, seed=body.seed,
                            decode_special_tokens=True, **({"embeddings": embeddings} if images else {}))
+        if observation:
+            observation.phase = "enqueued"
+            observation.last_progress = time.perf_counter()
     except BaseException as error:
         lock.release()
+        if observation:
+            observation.fail(error)
+            observation.finish({"http_queue_ms": admission_wait*1000}, {}, "enqueue")
         if shared is not None:
             from glm_b2_native import StopSharedGeneration
             if isinstance(error, StopSharedGeneration):
                 raise runtime["generator"].latch_shared(error) from error
         raise
-    ident = ("chatcmpl-" if chat else "cmpl-") + uuid.uuid4().hex
     created = int(time.time())
     splitter = ReasoningSplitter() if chat else None
     strict = names_strict(UNADVERTISED_TOOL_CALLS, tool_choice)
@@ -707,7 +745,18 @@ async def complete(body, request, chat):
     def event(payload):
         return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
 
-    cleanup = OwnedJobCleanup(job.cancel, lock.release)
+    async def cancel_and_report():
+        try:
+            await job.cancel()
+        except BaseException as error:
+            if observation:
+                observation.fail(error, "cleanup_error")
+            raise
+        finally:
+            if observation:
+                observation.finish(timings, usage, reason)
+
+    cleanup = OwnedJobCleanup(cancel_and_report, lock.release)
 
     async def results():
         nonlocal reason
@@ -715,7 +764,11 @@ async def complete(body, request, chat):
             if body.stream and chat:
                 yield envelope([{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}], True)
             async for result in job:
+                if observation:
+                    observation.observe(result)
                 if await request.is_disconnected():
+                    if observation:
+                        observation.outcome = "disconnected"
                     return
                 if result["stage"] != "streaming":
                     continue
@@ -730,6 +783,8 @@ async def complete(body, request, chat):
                 elif "content" in delta:
                     deltas.append({"content": delta["content"]})
                 for delta in deltas:
+                    if observation and delta:
+                        observation.visible()
                     for key in ("content", "reasoning_content"):
                         collected[key] += delta.get(key, "")
                     if body.stream:
@@ -761,12 +816,18 @@ async def complete(body, request, chat):
             if reason != "length" and (tool_choice == "required" or isinstance(tool_choice, dict)):
                 if not tool_splitter or not tool_splitter.calls:
                     raise ValueError("Model did not produce the requested function call")
+            if observation:
+                observation.outcome = "completed"
             if body.stream:
                 choice = {"index": 0, "finish_reason": reason}
                 choice.update({"delta": {}} if chat else {"text": ""})
                 yield {**envelope([choice], True), "timings": timings}
                 if (body.stream_options or {}).get("include_usage"):
                     yield {**envelope([], True), "usage": usage}
+        except BaseException as error:
+            if observation:
+                observation.fail(error, "cancelled" if isinstance(error, (asyncio.CancelledError, GeneratorExit)) else "error")
+            raise
         finally:
             await cleanup.close()
 
@@ -859,6 +920,8 @@ if __name__ == "__main__":
                         help="Shared page cap, default65536; requires explicit B2 shared flag")
     parser.add_argument("--b2-target-cpu-cache-gib", type=int,
                         help="B2-owned lazy inactive target page overflow GiB ceiling;0 disables, maximum8")
+    parser.add_argument("--persistent-cache-min-free-gib", type=int, default=16,
+                        help="Free-space reserve for --disk_cache_dir (default16 GiB); requires the B2 RAM tier")
     parser.add_argument("--hybrid-draft-tokens", dest="hybrid_draft_tokens", type=int, default=0,
                         help="P15b hybrid drafting: when a sequence's suffix matches at least this many tokens of its "
                              "earlier context, verify that many tokens of the continuation (on top of DFlash2 K7); "

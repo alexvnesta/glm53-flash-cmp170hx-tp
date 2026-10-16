@@ -9,6 +9,9 @@
 - **turboderp**, [ExLlamaV3](https://github.com/turboderp-org/exllamav3) and the
   [GLM-5.3-Flash EXL3 quants](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), including GLM-5.3 tensor parallelism,
   the vision tower support, native DFlash2, sliding-window draft state and recurrent paired checkpoints.
+  The cache update selectively backports upstream FP16 recurrent storage, allocation rollback,
+  nonfinite-logit detection and oversized-checkpoint handling; exact commits are in
+  [engine/NOTES.md](engine/NOTES.md). Upstream's disk serializer, checksums and LRU budgeting are retained.
 - **Z.ai**, GLM-5.3-Flash.
 - **incoai**, the [GLM-5.3-Flash DFlash2 drafter](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
 - **msuiche**, [Weightless](https://github.com/msuiche/weightless): the GLP format,

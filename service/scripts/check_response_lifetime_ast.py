@@ -55,7 +55,8 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
     if expect_owned:
         if digest(cleanup_path)!=EXPECTED_HELPER:raise AssertionError('Frozen response helper hash changed')
         helper=load(cleanup_path,label+'_cleanup')
-    lock=Lock();jobs=[];cancel_observations=[]
+    lock=Lock();jobs=[];cancel_observations=[];metric_rows=[]
+    metric_module=load(helper_dir/'glm_request_metrics.py',label+'_metrics')
     class AsyncJob:
         def __init__(self,*args,**kwargs):
             assert lock.locked();self.live=True;self.iterations=0;self.cancel_calls=0;jobs.append(self)
@@ -72,12 +73,13 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
     engine=ModuleType('exllamav3');engine.AsyncJob=AsyncJob
     engine.ComboSampler=lambda **kwargs:object();engine.GreedySampler=lambda:object()
     runtime={'lock':lock,'admission':admission.RequestAdmission(admission.AdmissionPolicy()),
+             'request_metrics':metric_module.RequestMetrics(sink=metric_rows.append),
              'args':NS(model_dir='/synthetic/model'),'context_length':393216,
              'generator':NS(error=None,generator=NS(_glm_b2_retention=None)),'tokenizer':NS(encode=lambda *a,**k:NS(shape=(1,10))),
              'config':NS(eos_token_id_list=[2]),'draft_options':NS(record_stats=False)}
     scope=dict(runtime=runtime,Path=Path,MODEL_ID='glm',HTTPException=HTTPException,
                NamedToolChoice=type('NamedToolChoice',(),{}),AdmissionError=admission.AdmissionError,
-               anyio=anyio,json=json,time=time,uuid=uuid,traceback=traceback,
+               anyio=anyio,asyncio=asyncio,json=json,time=time,uuid=uuid,traceback=traceback,
                StreamingResponse=StreamingResponse,nullcontext=nullcontext,
                names_strict=tools.names_strict,UNADVERTISED_TOOL_CALLS="pass")
     if helper:scope.update(OwnedJobCleanup=helper.OwnedJobCleanup,OwnedStreamingResponse=helper.OwnedStreamingResponse)
@@ -86,7 +88,7 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
     body=NS(store=False,model='glm',tool_choice=None,tools=None,prompt='Synthetic arithmetic fixture',
             messages=None,max_completion_tokens=None,max_tokens=8,min_tokens=0,temperature=0,
             frequency_penalty=0,presence_penalty=0,ignore_eos=False,stop=None,seed=42,
-            stream=True,stream_options={'include_usage':True},parallel_tool_calls=True)
+            stream=True,stream_options={'include_usage':True},parallel_tool_calls=True,reasoning_effort='high')
     async def disconnected():return False
     request=NS(is_disconnected=disconnected)
     never=asyncio.Event();messages=[]
@@ -127,6 +129,12 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
                                      for payload in payloads]
         assert any(payload.get('choices',[{}])[0].get('text')=='4'
                    for payload in payloads if payload.get('choices'))
+    if expect_owned:
+        assert len(metric_rows)==1, metric_rows
+        assert metric_rows[0]['outcome']==('cancelled' if header_failure else 'completed')
+        assert runtime['request_metrics'].snapshot()['active']==[]
+        assert 'Synthetic arithmetic fixture' not in json.dumps(metric_rows)
+        result['request_metric']=metric_rows[0]
     return result
 
 

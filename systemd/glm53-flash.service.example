@@ -14,8 +14,10 @@ WorkingDirectory=%h/glm53-flash-tp
 ExecStartPre=%h/glm53-flash-tp/scripts/wait_gpus.sh
 ExecStart=%h/glm53-flash-tp/scripts/run_tp.sh
 TimeoutStartSec=900
-# The server does not exit on SIGTERM quickly; a short stop timeout avoids long restarts.
-TimeoutStopSec=15
+# Signal the main process first so it can drain cache I/O while TP workers remain alive.
+# If graceful shutdown fails, systemd kills the whole cgroup after the bounded timeout.
+KillMode=mixed
+TimeoutStopSec=60
 Restart=on-failure
 RestartSec=30
 LimitNOFILE=65536

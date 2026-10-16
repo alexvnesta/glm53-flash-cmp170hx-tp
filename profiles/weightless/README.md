@@ -2,7 +2,13 @@
 
 This explicit variant keeps the P16 TP/DFlash2/cache/vision settings, adds the
 GLP-44 post-layer projector, and uses the two native stall-hardening patches.
-The regular launcher and baseline engine manifest retain their original defaults.
+The launcher now defaults to FP16 recurrent storage and a bounded persistent
+prefix/checkpoint cache. See [cache and metrics](../../docs/CACHE_AND_OBSERVABILITY.md)
+for the configuration, identity and memory-reservation contract.
+The regular launcher retains FP32 recurrent storage and opt-in persistence.
+The [October 15 qualification](../../docs/CACHE_QUALIFICATION_2026-10-15.md)
+records the measured checkpoint capacity, cold/restarted context timings and
+bounded functional checks. Earlier decode benchmark tables retain their dated profiles.
 
 First grant access to
 [the GLP-44 repository](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)
@@ -26,11 +32,11 @@ GLM_WEIGHTLESS_VECTOR=/ABS/vector.gguf ./scripts/run_weightless.sh
 ```
 
 `VERIFY=0` skips the baseline engine manifest, which intentionally differs from
-this variant. The separate 970-file manifest above verifies the variant instead.
+this variant. The separate 972-file manifest above verifies the variant instead.
 Build on the CPU with GPUs hidden as the native builder does; do not replace an
 active server or run two model owners. A rebuilt extension gets its own hash,
-which the launcher records and pins. The deployed build's hash is
-`c46af7b24b1d814db3ff5995b30450a399263b3a9cf36b5721d2d778eec7eb12`;
+which the launcher records and pins. The October 15 cache/FP16 build's hash is
+`ee120e00c9c938c7387f51936a7ea5547557f4c9e4a386e37370f5dbb02d4c42`;
 rebuild paths/compiler metadata can change binary bytes.
 
 The native changes remove device-wide synchronization before lazy graph capture

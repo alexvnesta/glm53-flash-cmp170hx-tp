@@ -20,29 +20,29 @@ PAGE_SIZE = 256
 ENGINE_SOURCE_PINS = {'exllamav3/util/memory.py': 'acb3d70d647e7b92cd5e2d05d4099606cefaca524488a2727971b1bdca8cd839',
  'exllamav3/util/pinned_arena.py': '6d8b9aabea21302eadfac75d477833a1c7d6c97a4b6c10df8b3eddf0ee42ac87',
  'exllamav3/generator/cpu_cache.py': '9d71e8edf7aeb1f5b42d853f84bb457a8c69f21984ecc54e255dac61b48952ed',
- 'exllamav3/cache/recurrent.py': '2534332a578b5663ea3ea4eb9a711042a4b402a56897cd903e3c883b4a1b132c',
- 'exllamav3/generator/generator.py': 'a743590460efd70d9624300f6bb4735f8555a848518264456847821cce54b1c0',
- 'exllamav3/generator/job.py': '0e60774bbde24b6aa062ab6534aa3e2c92b85987053124536aaee50e13550f78',
+ 'exllamav3/cache/recurrent.py': 'b0a0b4cd873b3c22d85dc013d44d4f96d47318e93bde09306abdddc85ecaea4e',
+ 'exllamav3/generator/generator.py': 'c3fdb33cfa7b75d4ea813a45a82632fd05b5d76852de34a8ec9c43791215c64e',
+ 'exllamav3/generator/job.py': '80e51ff5bb76712318ab70da148bb9689ad64690e81eb766e22a81d01aebd35d',
  'exllamav3/generator/pagetable.py': 'd39c7e824c2f2228fcc3fe012d30f93fbe7b7f0593780177c333889bd858f94b',
  'exllamav3/model/model_tp.py': '093f41daf693c2e1102fb20b8e9828fba6c6a38cfeb667a936e8226ba969df83',
  'exllamav3/model/model_tp_fn.py': 'f1198cfe9837b3365b43126fd9791ced228ddc5ce2ad69a44e9c3adfe9e4c6b2',
- 'exllamav3/cache/cache.py': '7bf22e342cc549385e5b112ddc5a031fd74e22221379abd2fc39795e1916e674',
+ 'exllamav3/cache/cache.py': '76b2478c6ee13b5e9827dcfe4c71b4bf23e2529c3a7b71422ee093160eabf396',
  'exllamav3/architecture/dflash2.py': 'b1815462a19c2b21dd0782a98b8bb6663ba03c5e13a33af61b721b11a80aee95',
  'exllamav3/modules/arch_specific/dflash2.py': 'bc00e8775944bbbc0fbb52412e7685e0409883fafe82021c9eb94e77a7802ec4',
  'exllamav3/cache/recurrent_util.py': '0083c6b941446634c423d8b5661c56ed7cb23df1e1c99ccdf0a57c0432aa00b7',
- 'exllamav3/modules/gated_delta_net.py': '2f7f2199b2ba929794224aea7bb78695cabc1949ba0cc6492b0064b0bad82587',
- 'exllamav3/modules/gated_delta_net_fn/gated_delta_rule.py': 'a47e3ac514277ca77e73db51ee6306515dc5f1fbb24747dc7d7da0538823c99d',
- 'exllamav3/modules/mamba2.py': '7362fb251254413bc61532bc3ca6194812ab1540aa99c52b4c3caa6b5f910e5a',
+ 'exllamav3/modules/gated_delta_net.py': 'd51e5ee42c0d9125b33eb358a310854c7d7208b7484bb7590072d2090261abb8',
+ 'exllamav3/modules/gated_delta_net_fn/gated_delta_rule.py': 'cb4731d829957e0323de317373c05634b5a7abaef5aef1d091c305a7f3f8cfe5',
+ 'exllamav3/modules/mamba2.py': '4da886d76d90c00ff9179c7f926864a1493b047f55e2cd7a4285df6f266b2939',
  'exllamav3/modules/short_conv.py': 'a9bd611e9bc30ecda794cadc3db78698f8949e6042842f8f45486f872cf3842f',
- 'exllamav3/exllamav3_ext/gdn.cu': '00b52ccd3bb5c81af596eae7dc4b4e09b30e004390a33390a38ff936e7c5f78b',
- 'exllamav3/exllamav3_ext/gdn.cuh': '477801fd13481174100ceabd19bb87fcbb946fed9aba88c5fa245c5dc8d403ae',
- 'exllamav3/exllamav3_ext/bindings.cpp': 'aa7be27d5bd2b9f2b739b44a46314126cb29260c948d4bc83d6653bd0f825fd9',
+ 'exllamav3/exllamav3_ext/gdn.cu': 'd281b12912391430923db2102ecf2b239d87fde7db37a3e94032da341ba88a28',
+ 'exllamav3/exllamav3_ext/gdn.cuh': 'd576b0f45cf68d21c0fef49a5dda49bd48e0d99d2e73faf6848e4eba5a27e88d',
+ 'exllamav3/exllamav3_ext/bindings.cpp': '7f402ca3c586d7c49725e2edb1c26c2481069c68fd8f3e6f6c55925c93e18242',
  'exllamav3/exllamav3_ext/graph.cuh': '79102c39181544c5aeb8c536717d01e9c5f7a69f662fa566f19fc90d64b8a63f',
- 'exllamav3/exllamav3_ext/libtorch/gated_delta_net.cpp': '3755a3eda10b1499af242cbbeb0208c1a50901baf3d26bef50a9c33a63e25710',
- 'exllamav3/exllamav3_ext/libtorch/gated_delta_net.h': 'a26c23b418321be9f8fad3ed502fbf11845ceaefb1e391b71487af3dd6f29859',
+ 'exllamav3/exllamav3_ext/libtorch/gated_delta_net.cpp': '03cbfca8bab2f5733dbe29ebe4e29ababbccf8b1069421603cfae78456cd34b6',
+ 'exllamav3/exllamav3_ext/libtorch/gated_delta_net.h': '77bea3d127baf25d6e32c37139c49af00eb9d688fc478c00dbff42d090569ccd',
  'exllamav3/exllamav3_ext/libtorch/gated_delta_net_bc.h': '9acba74a00cb636075292b791dca453bae979237361b2637f192bad3d6ccf955',
  'exllamav3/ext.py': '02dffe926bcc757ce442619629df9ef3fa7382a760069809e2875c1456af48a1',
- 'exllamav3/model_init.py': 'bc84353bb0a75f3df9dc5ebcd139a08bbfac340f77f30bfce130e4bbcdbe208b',
+ 'exllamav3/model_init.py': 'df47abd3c5c645ae7064c155aa27fc4e14a9320f3838020aacc5d6d9a4c36a36',
  'exllamav3/modules/sliding_attn.py': '1b01b558f9a0ded99728c893c755aef2f44a44bf5cbce3a00baa1c316be8d536',
  'exllamav3/architecture/dflash.py': '984910f1c56ac2fd9cdecf1ef3e7610a0bcb65dd34b852af68d306872c898715',
  'exllamav3/modules/arch_specific/dflash.py': '547ab475a8f87a777fa14a1a0c30ecd3304043ccd9901b139f60fbbd00a44186'}
@@ -297,6 +297,7 @@ def install_native_concurrency(slots=2):
     stash = Job.maybe_stash_recurrent
     cancel, clear_queue = Generator.cancel, Generator.clear_queue
     iterate, iterate_gen, close = Generator.iterate, Generator.iterate_gen, Generator.close
+    idle_work = Generator.idle_work
     def prepare_hook(self, g, *args, **kwargs):
         result = prepare(self, g, *args, **kwargs)
         manager = getattr(g, '_glm_native_concurrency', None)
@@ -404,6 +405,7 @@ def install_native_concurrency(slots=2):
                     manager.close()
         # The actual async wrapper has settled its uncancellable iteration first. Retire the B2 records only after
         # native close returned with no checkpoints (RecurrentCache.close releases both sides of every pair).
+        paired.closing = True
         result = close(self)
         paired = getattr(self, "_glm_b2_retention", None)
         if paired is not None:
@@ -412,6 +414,16 @@ def install_native_concurrency(slots=2):
         if manager is not None:
             manager.close()
         return result
+    def idle_hook(self):
+        manager = getattr(self, '_glm_native_concurrency', None)
+        if manager is None:
+            return idle_work(self)
+        from glm_b2_native import StopSharedGeneration, shared_failure
+        try:
+            with manager.step():
+                return idle_work(self)
+        except StopSharedGeneration as error:
+            raise shared_failure(error) from error
     # The unhooked native prefill, for the start-up fair scheduling check (glm_concurrent_options).
     prefill_hook._glm_native = prefill
     prepare_hook._glm_native_concurrency = slots
@@ -420,6 +432,7 @@ def install_native_concurrency(slots=2):
     Job.maybe_stash_recurrent = stash_hook
     Generator.cancel, Generator.clear_queue = cancel_hook, clear_hook
     Generator.iterate, Generator.iterate_gen, Generator.close = iterate_hook, iterate_gen_hook, close_hook
+    Generator.idle_work = idle_hook
 
 
 def bind_native_concurrency(generator, slots, allow_embeddings=False, drop_embeddings=False):
