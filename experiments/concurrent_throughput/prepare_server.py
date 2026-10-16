@@ -16,7 +16,27 @@ ENV_NAMES = {
     "GLM_WEIGHTLESS_ALPHA", "GLM_WEIGHTLESS_VALIDATE", "GLM_WEIGHTLESS_RECEIPTS",
     "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
     "GLM53_NATIVE_EXT_SHA256", "PYTORCH_CUDA_ALLOC_CONF",
+    "EXL3_BC_ATTN", "EXL3_MLA_KIDX_RING", "EXL3_INT8_GEMV", "EXL3_GEMV",
+    "EXL3_DSA_QC_STAGE", "EXL3_DSA_QC_STAGE_MIN_R", "EXL3_TP_WORKER_TIMEOUT",
+    "EXL3_AUTOSPLIT_MARGIN_MB", "GLM53_PREFILL_CHUNK_SIZE",
+    "GLM53_DYNAMIC_DRAFT", "GLM53_RECORD_DRAFT_STATS", "GLM53_TP_ACTIVE_HOST",
+    "NCCL_SOCKET_IFNAME",
 }
+
+
+def configuration_environment(raw_env, base, candidate):
+    env = {}
+    for entry in raw_env:
+        if b"=" not in entry:
+            continue
+        key, value = entry.decode().split("=", 1)
+        if key in ENV_NAMES:
+            env[key] = value.replace(str(base), str(candidate))
+        elif key.startswith(("EXL3_", "EXLLAMA_", "GLM53_", "NCCL_")):
+            # An omitted engine flag can invalidate a comparison or prevent
+            # startup. Fail without printing its potentially sensitive value.
+            raise ValueError("Unreviewed model configuration variable: " + key)
+    return env
 
 
 def prepare(base, candidate, pid, port):
@@ -48,13 +68,7 @@ def prepare(base, candidate, pid, port):
     raw_env = (Path("/proc") / str(pid) / "environ").read_bytes().split(b"\0")
     # Read only explicit non-credential configuration; never serialize a full
     # service environment or inherit API/Hugging Face credentials into receipts.
-    env = {}
-    for entry in raw_env:
-        if b"=" not in entry:
-            continue
-        key, value = entry.decode().split("=", 1)
-        if key in ENV_NAMES:
-            env[key] = value.replace(str(base), str(candidate))
+    env = configuration_environment(raw_env, base, candidate)
     env["GLM53_NATIVE_EXT_SHA256"] = build["native_sha256"]
     env["GLM_WEIGHTLESS_RECEIPTS"] = str(candidate / "receipts/numerics")
     if not env.get("PYTHONPATH", "").startswith(str(candidate / "native") + ":"):

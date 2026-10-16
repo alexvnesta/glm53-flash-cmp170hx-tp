@@ -11,8 +11,35 @@ import json
 from pathlib import Path
 import sys
 import subprocess
+import ast
 
 from prepare_row16 import verify
+
+
+def expand_oracle(source):
+    node, = [n for n in ast.parse(source).body
+             if isinstance(n, ast.FunctionDef) and n.name == "run_case"]
+    lines = source.splitlines(keepends=True)
+    function = "".join(lines[node.lineno - 1:node.end_lineno])
+    replacements = {
+        'out = torch.full((8, H_out),': 'out = torch.full((max(8, bsz), H_out),',
+        'smax * (I // 128) + 8 * (Ho // 128)':
+            'smax * (I // 128) + max(8, bsz) * (Ho // 128)',
+    }
+    for old, new in replacements.items():
+        if function.count(old) != 1:
+            raise RuntimeError("Oracle function anchor changed")
+        function = function.replace(old, new)
+    return "".join(lines[:node.lineno - 1]) + function + "".join(lines[node.end_lineno:])
+
+
+def oracle_code(source, filename):
+    tree = ast.parse(expand_oracle(source), filename=filename)
+    tree.body = [node for node in tree.body
+                 if not (isinstance(node, ast.Import) and
+                         any(alias.name == "pytest" for alias in node.names))
+                 and not (isinstance(node, ast.FunctionDef) and node.name != "run_case")]
+    return compile(ast.fix_missing_locations(tree), filename, "exec")
 
 
 def main():
@@ -42,18 +69,8 @@ def main():
     if torch.cuda.device_count() != 2:
         raise RuntimeError("Expected exclusive access to two CMP GPUs")
     path = args.engine / "tests/kernels/moe/test_moe_coop.py"
-    source = path.read_text()
-    replacements = {
-        'out = torch.full((8, H_out),': 'out = torch.full((max(8, bsz), H_out),',
-        'smax * (I // 128) + 8 * (Ho // 128)':
-            'smax * (I // 128) + max(8, bsz) * (Ho // 128)',
-    }
-    for old, new in replacements.items():
-        if source.count(old) != 1:
-            raise RuntimeError("Oracle source anchor changed")
-        source = source.replace(old, new)
     namespace = {"__name__": "row16_upstream_oracle", "__file__": str(path)}
-    exec(compile(source, str(path), "exec"), namespace)
+    exec(oracle_code(path.read_text(), str(path)), namespace)
     run_case = namespace["run_case"]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     receipt = {"passed": False, "source_oracle_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
