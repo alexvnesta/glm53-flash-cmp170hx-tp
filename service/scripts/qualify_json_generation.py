@@ -150,7 +150,8 @@ async def run(args, probe):
                     detail = probe.failure_details(error)
                     def task_failure(item):
                         if item.get('type') == 'ProbeResponseFailure':
-                            return True
+                            return (item.get('message', '').startswith('Known-answer failure:')
+                                    and item.get('response', {}).get('correct') is False)
                         children = item.get('exceptions', [])
                         return bool(children) and all(task_failure(child) for child in children)
                     if not task_failure(detail):
