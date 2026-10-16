@@ -55,4 +55,22 @@ class RoutedPreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Retile anchor'):
             patch_header(source.replace('    constexpr int WN = tile_wn<WIDE>();',''), 'retile')
 
+    def test_fp32_is_guarded_and_rejects_changed_arithmetic_anchor(self):
+        source=TEMPLATE+'() {\n'+REG+'''
+    FragC_h ch[WNT][2] = {};
+                exl3_gemv_ns::mma_ab_h(a01, a23, f0, ch[t][0]);
+                exl3_gemv_ns::mma_ab_h(a01, a23, f1, ch[t][1]);
+            if ((d + 1) % FOLD == 0 || i + 1 == myn)
+                red[col + 0] = acc0[t][f].x;
+                red[col + 1] = acc0[t][f].y;
+}\n'''+CALL+' 0);\ngemv_tile<bits, cb, WIDE, HALF>(down);\n'
+        result=patch_header(source,'fp32')
+        self.assertIn('GATE_UP && bits == 3 && cb == 2 && WIDE && !HALF',result)
+        self.assertIn('if constexpr (!FP32_ACCUM)',result)
+        self.assertIn('ptx_mma_m16n8k16(af, f0, cf[t][0])',result)
+        self.assertIn('gemv_tile<bits, cb, WIDE, HALF>(down)',result)
+        self.assertNotIn('constexpr int WNT =',result)
+        with self.assertRaisesRegex(ValueError,'FP32 accumulation anchor'):
+            patch_header(source.replace('                red[col + 1] = acc0[t][f].y;',''), 'fp32')
+
 if __name__=='__main__':unittest.main()

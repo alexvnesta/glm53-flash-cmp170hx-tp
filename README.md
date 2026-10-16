@@ -53,6 +53,12 @@ occupancy, but regresses serving throughput. The report retains the same
 benchmark, actual per-agent rates and CPU-contention flags; the qualified
 row32 layout remains the default.
 
+The [direct FP32 accumulation experiment](docs/MOE_FP32_2026-10-16.md)
+removes periodic accumulator folding without changing the warp layout.
+Numerical and functional checks pass, but concurrent token throughput does
+not improve. Its report separates kernel timing from faster task completion
+caused by more compact JSON output. Qualified production retains row32.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

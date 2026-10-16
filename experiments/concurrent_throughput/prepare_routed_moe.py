@@ -1,9 +1,9 @@
 """Isolated SM80 three-bit/mul1 gate-up kernel experiments.
 
-Tests the existing staged decoder, an eight-entry prefetch ring or a different
-warp layout only in kernel A. Retiling changes the cross-warp K partition;
-the other modes preserve it. Accumulation cadence, routing, down kernels,
-other bitrates and communication stay unchanged.
+Tests staged decode, deeper prefetch, warp layout or FP32 Tensor Core
+accumulation only in kernel A. Retiling changes the cross-warp K partition;
+FP32 accumulation removes periodic FP16-to-FP32 folding. Other modes preserve
+accumulation. Routing, down kernels, other bitrates and communication stay unchanged.
 The original header is preserved; only the K3 translation unit includes a new
 attested derived header, allowing a one-object incremental rebuild.
 """
@@ -23,7 +23,7 @@ CALL='gemv_tile<bits, cb, WIDE, HALF>(B32, A2, a_stride2, sh_rows, nrows, C,'
 
 
 def patch_header(source, mode="staged"):
-    if mode not in ("staged","prefetch8","retile"):raise ValueError("Unknown routed kernel mode")
+    if mode not in ("staged","prefetch8","retile","fp32"):raise ValueError("Unknown routed kernel mode")
     for anchor in (TEMPLATE,REG,CALL):
         if source.count(anchor)!=1:raise ValueError('Routed kernel anchor changed')
     source=source.replace(TEMPLATE,TEMPLATE.replace('HALF = false','HALF = false, bool GATE_UP = false'))
@@ -38,7 +38,7 @@ def patch_header(source, mode="staged"):
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800
     constexpr int PF = GATE_UP && bits == 3 && cb == 2 ? 8 : exl3_moe_coop_ns::PF;
 #endif''')
-    else:
+    elif mode=="retile":
         anchors = (
             '    constexpr int TWORDS = HALF ?',
             '    constexpr int WN = tile_wn<WIDE>();',
@@ -60,6 +60,48 @@ def patch_header(source, mode="staged"):
 '''+anchors[0])
         source=source.replace(anchors[1],'    constexpr int WN = RETILE ? 8 : tile_wn<WIDE>();')
         source=source.replace(anchors[2],'    constexpr int WKK = RETILE ? 2 : tile_wk<WIDE>();')
+    else:
+        anchors = (
+            '    FragC_h ch[WNT][2] = {};',
+            '''                exl3_gemv_ns::mma_ab_h(a01, a23, f0, ch[t][0]);
+                exl3_gemv_ns::mma_ab_h(a01, a23, f1, ch[t][1]);''',
+            '            if ((d + 1) % FOLD == 0 || i + 1 == myn)',
+            '''                red[col + 0] = acc0[t][f].x;
+                red[col + 1] = acc0[t][f].y;''',
+        )
+        for anchor in anchors:
+            if source.count(anchor)!=1:raise ValueError('FP32 accumulation anchor changed')
+        source=source.replace(REG,REG+'''
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800
+    constexpr bool FP32_ACCUM = GATE_UP && bits == 3 && cb == 2 && WIDE && !HALF;
+#else
+    constexpr bool FP32_ACCUM = false;
+#endif''')
+        source=source.replace(anchors[0],anchors[0]+'\n    FragC cf[WNT][2] = {};')
+        source=source.replace(anchors[1],'''                if constexpr (FP32_ACCUM)
+                {
+                    // Reuse upstream's FP16-input / FP32-accumulator Tensor Core helper.
+                    // The upper eight A rows stay zero, as in the original FP16 path.
+                    FragA af;
+                    af[0] = a01[0]; af[1] = a01[1];
+                    af[2] = a23[0]; af[3] = a23[1];
+                    ptx_mma_m16n8k16(af, f0, cf[t][0]);
+                    ptx_mma_m16n8k16(af, f1, cf[t][1]);
+                }
+                else
+                {
+'''+anchors[1]+'''
+                }''')
+        source=source.replace(anchors[2],'            if constexpr (!FP32_ACCUM)\n'+anchors[2])
+        source=source.replace(anchors[3],'''                if constexpr (FP32_ACCUM)
+                {
+                    red[col + 0] = cf[t][f][0];
+                    red[col + 1] = cf[t][f][1];
+                }
+                else
+                {
+'''+anchors[3]+'''
+                }''')
     return source.replace(CALL,CALL.replace('WIDE, HALF>','WIDE, HALF, true>'))
 
 
@@ -78,7 +120,7 @@ def prepare(engine,manifest,output,mode="staged"):
     (target/UNIT).write_text(unit.replace(anchor,'#include "../exl3_moe_coop_routed.cuh"'))
     hashes={name:sha(target/name) for name in [*expected,DERIVED]}
     (output/'engine.sha256').write_text(''.join(f'{digest}  {name}\n' for name,digest in sorted(hashes.items())))
-    receipt={'status':'unqualified_candidate','kind':{'staged':'routed_a_staging','prefetch8':'routed_a_prefetch8','retile':'routed_a_retile'}[mode],'decode_max_rows':32,
+    receipt={'status':'unqualified_candidate','kind':{'staged':'routed_a_staging','prefetch8':'routed_a_prefetch8','retile':'routed_a_retile','fp32':'routed_a_fp32'}[mode],'decode_max_rows':32,
       'source_files':len(hashes),'base_manifest_sha256':sha(manifest),
       'changed_sources':{name:{'before':expected.get(name),'after':hashes[name]} for name in (UNIT,DERIVED)},
       'derived_from':{DERIVED:{'source':HEADER,'sha256':expected[HEADER]}},
@@ -88,5 +130,5 @@ def prepare(engine,manifest,output,mode="staged"):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--engine',type=Path,required=True);p.add_argument('--manifest',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    p.add_argument("--mode",choices=("staged","prefetch8","retile"),default="staged")
+    p.add_argument("--mode",choices=("staged","prefetch8","retile","fp32"),default="staged")
     a=p.parse_args();print(json.dumps(prepare(a.engine,a.manifest,a.output,a.mode)))
