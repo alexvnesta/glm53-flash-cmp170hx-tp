@@ -39,6 +39,8 @@ jobs:
           python -m pip install -r experiments/weightless/requirements-test.txt
           python -m pytest -q experiments/weightless/test_weightless.py
           python service/tests/test_weightless_options.py
+      - name: Check bounded concurrency probe and isolated variant preparation
+        run: python -m unittest discover -s experiments/concurrent_throughput -v
       - name: Reproduce cold graph capture scheduling on CPU
         run: python experiments/tp-graph-capture/test_capture_schedule.py
       - name: Reproduce the Weightless variant manifest

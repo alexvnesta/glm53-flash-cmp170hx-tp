@@ -138,6 +138,13 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Roadmap
 
+- **Concurrency investigation:** the [October 16 matched measurements](docs/EXLLAMA_CONCURRENCY_2026-10-16.md)
+  found an experimental sixteen-row fused-decode path reduced structured
+  task-pair completion time by 11–12% versus direct-backend controls. GPU
+  numerics, functional and lifecycle checks passed, but high-effort strict JSON
+  formatting failed in three diagnostic repeats. The variant remains
+  experimental and the original production profile is restored.
+
 - **Engine:** pins upstream dev `0f685aa9fd` with selected upstream recurrent-state/recovery backports and the original four P16 patches. See [engine/NOTES.md](engine/NOTES.md) for source reproduction and [cache/metrics notes](docs/CACHE_AND_OBSERVABILITY.md) for the optional persistent profile.
 
 - **Done (2026-10-12): NCCL over GPU P2P.** A content check (peer copies and NCCL all-reduce against a CPU reference) passed on our
