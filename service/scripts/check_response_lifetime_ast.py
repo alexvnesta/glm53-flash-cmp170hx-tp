@@ -50,6 +50,7 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
               and n.name in ('complete','stream_text')]
     admission=load(helper_dir/'glm_admission.py',label+'_admission')
     tools=load(helper_dir/'glm_tools.py',label+'_tools')
+    json_output=load(helper_dir/'glm_json_output.py',label+'_json_output')
     cleanup_path=helper_dir/'glm_response_cleanup.py'
     helper=None
     if expect_owned:
@@ -82,6 +83,7 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
                anyio=anyio,asyncio=asyncio,json=json,time=time,uuid=uuid,traceback=traceback,
                StreamingResponse=StreamingResponse,nullcontext=nullcontext,
                names_strict=tools.names_strict,UNADVERTISED_TOOL_CALLS="pass")
+    scope['glm_json_output']=json_output
     if helper:scope.update(OwnedJobCleanup=helper.OwnedJobCleanup,OwnedStreamingResponse=helper.OwnedStreamingResponse)
     for node in selected:node.decorator_list=[]
     exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),str(api),'exec'),scope)

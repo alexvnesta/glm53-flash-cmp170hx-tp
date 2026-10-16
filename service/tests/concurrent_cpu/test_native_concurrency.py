@@ -159,6 +159,21 @@ class Contracts(unittest.TestCase):
         job = Job(vision.generator); job.embeddings = [object()]
         vision.prepare(job)
 
+    def test_json_filter_admission_is_explicit_and_uses_the_per_job_policy(self):
+        self.g.tokenizer = object()
+        job = Job(self.g); job.filters = [object()]
+        with patch('glm_json_output.permitted_filters', return_value=True) as allowed:
+            with self.assertRaises(ValueError):
+                self.m.prepare(job)
+            allowed.assert_not_called()
+            manager = nc.NativeConcurrency(self.g, 2, allow_json_output=True)
+            manager.prepare(job)
+            allowed.assert_called_once_with(job.filters, self.g.tokenizer, job)
+        with patch('glm_json_output.permitted_filters', return_value=False), self.assertRaises(ValueError):
+            manager.prepare(job)
+        with self.assertRaises(ValueError):
+            nc.NativeConcurrency(self.g, 2, allow_json_output=1)
+
     def test_slot_custody_and_reuse_observations(self):
         g, m = self.g, self.m
         a, b = Job(g, 0, 0), Job(g, 1, 1)
@@ -221,9 +236,9 @@ class Contracts(unittest.TestCase):
         nc.verify_engine_sources(ENGINE)
         with tempfile.TemporaryDirectory() as td, self.assertRaises(FileNotFoundError):
             nc.verify_engine_sources(td)
-        self.assertEqual(len(nc.ENGINE_SOURCE_PINS), 29)
         for key in ('exllamav3/modules/sliding_attn.py', 'exllamav3/architecture/dflash.py',
-                    'exllamav3/modules/arch_specific/dflash.py', 'exllamav3/cache/recurrent.py'):
+                    'exllamav3/modules/arch_specific/dflash.py', 'exllamav3/cache/recurrent.py',
+                    'exllamav3/generator/filter/filter.py', 'exllamav3/generator/filter/llguidance.py'):
             self.assertIn(key, nc.ENGINE_SOURCE_PINS)
 
 

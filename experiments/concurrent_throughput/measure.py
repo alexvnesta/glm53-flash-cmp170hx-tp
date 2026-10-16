@@ -45,7 +45,15 @@ def cases(size=64, workload="structured"):
                    "No markdown or explanation."),
         "expected": list(range(start, start + size)),
     } for start in (100, 400)]
-    if workload == "mixed":
+    if workload.endswith("_json"):
+        for item in pair:
+            start = item["expected"][0]
+            item.update(id="json-" + item["id"],
+                        prompt=(f"Return only a JSON object with key values containing the array of all integers "
+                                f"from {start} through {start + size - 1}, inclusive, in ascending order. "
+                                "No markdown or explanation."),
+                        expected={"values": item["expected"]}, response_format={"type": "json_object"})
+    if workload in ("mixed", "mixed_json"):
         pair[0] = {
             "id": "compress-runs-code", "validator": "code",
             "prompt": (
@@ -56,6 +64,8 @@ def cases(size=64, workload="structured"):
                 "object with one key, code, containing the source as a string."
             ),
         }
+        if workload == "mixed_json":
+            pair[0]["response_format"] = {"type": "json_object"}
     return pair
 
 
@@ -68,6 +78,7 @@ def identity(health):
         "max_active_sequences": health.get("max_active_sequences"),
         "draft_num_tokens": health.get("draft_num_tokens"),
         "hybrid_draft_tokens": health.get("hybrid_drafting", {}).get("hybrid_draft_tokens"),
+        "json_output": health.get("json_output"),
     }
 
 
@@ -119,6 +130,9 @@ async def stream(client, case, effort, owned):
         "temperature": 0, "max_tokens": 768, "stream": True,
         "stream_options": {"include_usage": True},
     }
+    if case.get("response_format"):
+        payload["response_format"] = case["response_format"]
+        result["response_format"] = case["response_format"]
     usage, finished, timings = None, None, None
     if isinstance(owned, OwnedRequests):
         owned.pending[case["id"]] = time.monotonic()
@@ -168,6 +182,9 @@ async def stream(client, case, effort, owned):
         raise ProbeResponseFailure("Known-answer failure: " + case["id"], result)
     if not usage or not isinstance(usage.get("completion_tokens"), int):
         raise ProbeResponseFailure("Final token usage missing; cannot compare throughput", result)
+    result["end_to_end_completion_tokens_per_s"] = usage["completion_tokens"] / result["finish_s"]
+    decode_ms = (timings or {}).get("predicted_ms", 0)
+    result["engine_decode_tokens_per_s"] = usage["completion_tokens"] * 1000 / decode_ms if decode_ms > 0 else None
     return result
 
 
@@ -272,6 +289,8 @@ def compare(serial, parallel):
         "all_correct": all(r["correct"] for w in (serial, parallel) for r in w["requests"]),
         "serial_completion_tokens": sum(r["usage"]["completion_tokens"] for r in serial["requests"]),
         "concurrent_completion_tokens": sum(r["usage"]["completion_tokens"] for r in parallel["requests"]),
+        "serial_aggregate_completion_tokens_per_s": sum(r["usage"]["completion_tokens"] for r in serial["requests"]) / serial["batch_finish_s"],
+        "concurrent_aggregate_completion_tokens_per_s": sum(r["usage"]["completion_tokens"] for r in parallel["requests"]) / parallel["batch_finish_s"],
         "cached_tokens": sum(r.get("cached_tokens", 0) for w in (serial, parallel) for r in w["server_metrics"]),
     }
 
@@ -289,6 +308,8 @@ async def run(args):
         try:
             initial = await health(client)
             require_idle(initial)
+            if args.workload.endswith("_json") and not initial.get("json_output", {}).get("enabled"):
+                raise RuntimeError("This fixture requires explicitly enabled JSON-object output")
             report["identity"] = identity(initial)
             # Stable idle check; later monitor checks also yield on arrivals.
             await asyncio.sleep(2)
@@ -327,10 +348,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:18012")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--effort", nargs="+", choices=("low", "high"), default=["low", "high"])
+    parser.add_argument("--effort", nargs="+", choices=("low", "high", "max"), default=["low", "high"])
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--size", type=int, default=64)
-    parser.add_argument("--workload", choices=("structured", "mixed"), default="structured")
+    parser.add_argument("--workload", choices=("structured", "mixed", "structured_json", "mixed_json"), default="structured")
     args = parser.parse_args()
     if args.repeats not in (1, 2, 3) or not 16 <= args.size <= 96:
         parser.error("Bounded repeats 1..3 and size 16..96 required")

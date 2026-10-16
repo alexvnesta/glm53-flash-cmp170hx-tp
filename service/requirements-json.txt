@@ -1,0 +1,2 @@
+# Optional per-job constrained JSON output; installed version qualified on this host.
+llguidance==1.9.1

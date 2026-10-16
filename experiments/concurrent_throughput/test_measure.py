@@ -21,6 +21,14 @@ def snapshot():
 
 
 class GuardTests(unittest.TestCase):
+    def test_explicit_json_cohort_is_separate_and_legacy_fixture_is_unchanged(self):
+        legacy = measure.cases(16, "mixed")
+        fixed = measure.cases(16, "mixed_json")
+        self.assertEqual(legacy[0]["prompt"], fixed[0]["prompt"])
+        self.assertNotIn("response_format", legacy[0])
+        self.assertEqual(fixed[0]["response_format"], {"type": "json_object"})
+        self.assertEqual(fixed[1]["expected"], {"values": list(range(400, 416))})
+
     def test_nested_parallel_failures_preserve_failed_answer_for_diagnosis(self):
         response = {"answer": '{"code":"def compress_runs(values): return []"}',
                     "case": "compress-runs-code", "correct": False}
@@ -53,6 +61,8 @@ class GuardTests(unittest.TestCase):
                         ring_after={"batched_verifier_rounds": 3, "batched_draft_rounds": 2})
         result = measure.compare(serial, parallel)
         self.assertEqual(result["batch_speedup"], 1.6)
+        self.assertEqual(result["serial_aggregate_completion_tokens_per_s"], 12.5)
+        self.assertEqual(result["concurrent_aggregate_completion_tokens_per_s"], 20)
         self.assertFalse(result["real_draft_and_target_batch_observed"])
         parallel["ring_after"]["batched_draft_rounds"] = 3
         self.assertTrue(measure.compare(serial, parallel)["real_draft_and_target_batch_observed"])
@@ -97,6 +107,8 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(owned, {"our-request"})
         self.assertEqual(result["usage"]["completion_tokens"], 97)
         self.assertTrue(result["correct"])
+        self.assertAlmostEqual(result["end_to_end_completion_tokens_per_s"], 97 / result["finish_s"])
+        self.assertIsNone(result["engine_decode_tokens_per_s"])
         self.assertLessEqual(result["ttft_s"], result["first_visible_s"])
 
     async def test_incorrect_or_incomplete_outputs_cannot_enter_comparison(self):

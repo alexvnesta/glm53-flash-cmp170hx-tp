@@ -84,6 +84,9 @@ Any OpenAI-compatible client works with base URL `http://127.0.0.1:8012/v1` and 
 - **Reasoning effort:** send `reasoning_effort` (`low`, `high`, `max`), or use the model names `GLM-5.3-Flash-low`,
   `-high`, `-max`. The default is `high`. `max` is much slower on everyday prompts but more careful on hard lookups.
 - **Tools:** standard OpenAI `tools` / `tool_calls`, streaming or not.
+- **JSON objects:** opt in at startup with `--experimental-json-mode` and request
+  `response_format: {"type":"json_object"}`. See the
+  [contract and qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md).
 - **Images:** content parts with `{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}` in user messages.
   PNG, JPEG or WebP; up to 16 images per request. Remote image URLs are refused, so clients must send base64.
 - **Endpoints:** `/v1/chat/completions`, `/v1/completions`, `/v1/models`, `/tokenize`, `/health`.

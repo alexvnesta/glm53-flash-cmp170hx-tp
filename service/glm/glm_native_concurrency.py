@@ -18,6 +18,8 @@ PAGE_SIZE = 256
 # 14c53da; engine.sha256 648b28dd). sliding_attn.py carries the fix the B2 resume path depends on; dflash.py (both)
 # write the accepted rows into the window rings. Every gate is checked before hook installation.
 ENGINE_SOURCE_PINS = {'exllamav3/util/memory.py': 'acb3d70d647e7b92cd5e2d05d4099606cefaca524488a2727971b1bdca8cd839',
+ 'exllamav3/generator/filter/filter.py': 'f70928434811888e3ffb02b8e80fd525b7a704ad2c32d41eee9a05b96c836c3b',
+ 'exllamav3/generator/filter/llguidance.py': '12450bd2248fbcb107db51d7b460f273d1beb91101cf3abff7a7e5d43e8cbe39',
  'exllamav3/util/pinned_arena.py': '6d8b9aabea21302eadfac75d477833a1c7d6c97a4b6c10df8b3eddf0ee42ac87',
  'exllamav3/generator/cpu_cache.py': '9d71e8edf7aeb1f5b42d853f84bb457a8c69f21984ecc54e255dac61b48952ed',
  'exllamav3/cache/recurrent.py': 'b0a0b4cd873b3c22d85dc013d44d4f96d47318e93bde09306abdddc85ecaea4e',
@@ -65,13 +67,16 @@ def _active_host():
 
 
 class NativeConcurrency:
-    def __init__(self, generator, slots, allow_embeddings=False, drop_embeddings=False):
+    def __init__(self, generator, slots, allow_embeddings=False, drop_embeddings=False, allow_json_output=False):
         if type(slots) is not int or not 2 <= slots <= 8:
             raise ValueError("Concurrent slots must be 2..8")
         if type(allow_embeddings) is not bool:
             raise ValueError("allow_embeddings must be a bool")
         if type(drop_embeddings) is not bool or (drop_embeddings and not allow_embeddings):
             raise ValueError("drop_embeddings must be a bool and needs allow_embeddings")
+        if type(allow_json_output) is not bool:
+            raise ValueError("allow_json_output must be a bool")
+        self.allow_json_output = allow_json_output
         g = generator
         draft = g.draft_cache
         if (not g.dflash_draft or not getattr(g, 'draft_recurrent', False) or not g.model.loaded_tp
@@ -201,9 +206,13 @@ class NativeConcurrency:
         self.check_owner()
         if (job.generator is not self.generator or job.pagetable is not self.pagetable
                 or len(job.sequences) != 1 or job.is_requeued or (job.embeddings and not self.allow_embeddings)
-                or job.filters or job.banned_strings or job.prefix_token is not None
+                or job.banned_strings or job.prefix_token is not None
                 or job.orig_max_rq_tokens is not None):
             raise ValueError("Concurrent profile supports plain, non-requeued single-sequence jobs")
+        if job.filters:
+            from glm_json_output import permitted_filters
+            if not self.allow_json_output or not permitted_filters(job.filters, self.generator.tokenizer, job):
+                raise ValueError("Concurrent profile only permits its explicitly enabled JSON-object filter")
 
     def held_slots(self):
         """Draft ring slots held by jobs (upstream's own free list; safe to read from the HTTP thread)."""
@@ -253,6 +262,7 @@ class NativeConcurrency:
                     mixed_prefill_steps=self.mixed_prefill_steps, reused_slots=self.reused_slots,
                     decode_table_rebinds=self.decode_table_rebinds,
                     paired_retention=self._paired_owner is not None,
+                    json_object_filters=self.allow_json_output,
                     draft_state_rows=self.draft_state_rows, draft_window=self.draft_window,
                     draft_state_bytes=self.draft_state_bytes,
                     **({"embeddings_dropped": self.embeddings_dropped} if self.allow_embeddings else {}))
@@ -435,14 +445,14 @@ def install_native_concurrency(slots=2):
     Generator.idle_work = idle_hook
 
 
-def bind_native_concurrency(generator, slots, allow_embeddings=False, drop_embeddings=False):
+def bind_native_concurrency(generator, slots, allow_embeddings=False, drop_embeddings=False, allow_json_output=False):
     old_defrag = generator.enable_defrag
     if generator.num_remaining_jobs() or getattr(generator, '_glm_native_concurrency', None) is not None:
         raise ValueError("Native concurrency requires a fresh idle generator")
     generator.enable_defrag = False
     try:
         manager = NativeConcurrency(generator, slots, allow_embeddings=allow_embeddings,
-                                    drop_embeddings=drop_embeddings)
+                                    drop_embeddings=drop_embeddings, allow_json_output=allow_json_output)
         generator._glm_native_concurrency = manager
         return manager
     except BaseException:
