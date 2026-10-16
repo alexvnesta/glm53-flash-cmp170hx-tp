@@ -18,7 +18,8 @@ It builds on [Flun's GLM-5.3-Flash EXL3 setup](https://github.com/Flun/glm53-fla
 The [optional Weightless GLP-44 profile](profiles/weightless/README.md) adds a
 fused post-layer projector and native prefill-stall hardening. It is enabled on
 the local host at strength 2 across layers 1–44; see the
-[October 14 validation](docs/WEIGHTLESS_QUALIFICATION_2026-10-14.md). The regular
+[October 14 validation](docs/WEIGHTLESS_QUALIFICATION_2026-10-14.md) and
+[October 15 cache/FP16 qualification](docs/CACHE_QUALIFICATION_2026-10-15.md). The regular
 launcher remains unsteered, and the performance tables below describe the
 earlier unsteered P16 measurements.
 

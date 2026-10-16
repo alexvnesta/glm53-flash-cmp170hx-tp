@@ -6,6 +6,9 @@ The launcher now defaults to FP16 recurrent storage and a bounded persistent
 prefix/checkpoint cache. See [cache and metrics](../../docs/CACHE_AND_OBSERVABILITY.md)
 for the configuration, identity and memory-reservation contract.
 The regular launcher retains FP32 recurrent storage and opt-in persistence.
+The [October 15 qualification](../../docs/CACHE_QUALIFICATION_2026-10-15.md)
+records the measured checkpoint capacity, cold/restarted context timings and
+bounded functional checks. Earlier decode benchmark tables retain their dated profiles.
 
 First grant access to
 [the GLP-44 repository](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)

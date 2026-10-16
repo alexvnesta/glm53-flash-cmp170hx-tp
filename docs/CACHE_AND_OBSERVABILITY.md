@@ -41,6 +41,8 @@ For this model, halving the 34 KDA recurrent matrices saves 71,303,168 bytes per
 paired checkpoint. The calculated pair size changes from 191,213,568 to
 119,910,400 bytes, allowing 44 rather than 28 pairs within 5 GiB. The drafter's
 FP16 sliding-window state remains part of every pair.
+The [dated qualification](CACHE_QUALIFICATION_2026-10-15.md) observes 44 retained
+pairs on the actual two-card profile.
 
 ## Persistent prefix cache
 
