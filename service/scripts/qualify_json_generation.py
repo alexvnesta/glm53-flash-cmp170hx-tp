@@ -77,6 +77,7 @@ async def run(args, probe):
                 async def holder(index, start):
                     body = request(f'Return only a JSON object with key values containing all integers from {start} '
                                    f'through {start+255}, inclusive, in order.', stream=True,
+                                   max_tokens=4096,
                                    stream_options={'include_usage': True})
                     state = states[index]; state.update(content='', finish_reason=None)
                     async with client.stream('POST', '/v1/chat/completions', json=body) as response:
@@ -104,7 +105,9 @@ async def run(args, probe):
                 finally:
                     for task in tasks: task.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
-                assert states[1]['finish_reason'] == 'stop' and states[1].get('usage')
+                    report['lifecycle_partial'] = states
+                    save()
+                assert states[1]['finish_reason'] == 'stop' and states[1].get('usage'), states[1]
                 assert json.loads(states[1]['content']) == {'values': list(range(1001, 1257))}
                 after = await idle()
                 retired = [r for r in after['request_metrics']['recent'] if r['id'] == states[0]['id']]
