@@ -59,6 +59,14 @@ Numerical and functional checks pass, but concurrent token throughput does
 not improve. Its report separates kernel timing from faster task completion
 caused by more compact JSON output. Qualified production retains row32.
 
+The [four-active-sequence trial](docs/FOUR_ACTIVE_2026-10-16.md) measures real
+four-way drafting and verification with the same tasks and low/high efforts.
+Four-agent aggregate delivery improves from **134.8 to 155.5 tok/s at low effort**
+and **125.0 to 143.7 tok/s at high effort**. All 384 scored tasks pass. The report
+includes actual per-agent rates, time to finish, token counts and retained
+CPU-confounded controls. Four slots remain experimental; production defaults
+to the qualified two-slot profile pending broader runtime qualification.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

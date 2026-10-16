@@ -135,6 +135,60 @@ class Resume(Base):
 
 
 class TwoJobs(Base):
+    def test_four_shared_tickets_transition_to_owned_jobs_without_extra_admission(self):
+        import glm_b2_shared_prefix as shared
+        s=scenario(slots=4)
+        with s.installed():
+            g,m,c=s.generator(shared_tokens=512)
+            jobs=[s.Job(nf.prompt(600,i+1),500) for i in range(5)]
+            def bind(j):
+                tokens=j.sequences[0].input_ids.torch()
+                c.shared.prepared=[shared.Ticket(tokens,c.shared.context,256,
+                    shared._sha(shared._encoded(tokens[0].tolist()))),None]
+                try:c.shared.bind_ticket(j)
+                finally:c.shared.prepared=None
+            for j in jobs[:4]:bind(j)
+            with self.assertRaisesRegex(ValueError,'capacity'):bind(jobs[4])
+            self.assertEqual(len(c.shared.tickets),4)
+            for j in jobs[:4]:g.enqueue(j)
+            self.assertEqual((len(c.jobs),len(c.shared.tickets)),(4,0))
+            s.run([])
+            for i,j in enumerate(jobs[:4]):self.assertEqual(j.text,reference(nf.prompt(600,i+1),500))
+            self.assertFalse(c.jobs or c.shared.tickets);self.custody(s,m)
+
+    def test_four_distinct_jobs_are_lossless_with_independent_state_and_reuse(self):
+        s=scenario(slots=4)
+        observed=[]
+        with s.installed():
+            g,m,c=s.generator()
+            jobs=[s.Job(nf.prompt(600,i+1),500) for i in range(4)]
+            def observe(_,results):
+                held=[(j.recurrent_state.target.slot,j.recurrent_state.draft.slot)
+                      for j in g.active_jobs if j.recurrent_state is not None]
+                if len(held)==4:observed.append(held)
+            s.run([(j,0) for j in jobs],between=observe)
+            for i,j in enumerate(jobs):self.assertEqual(j.text,reference(nf.prompt(600,i+1),500))
+            self.assertTrue(observed)
+            for held in observed:
+                self.assertEqual(len({t for t,d in held}),4)
+                self.assertEqual(len({d for t,d in held}),4)
+            self.assertEqual((m.peak_target_batch,m.peak_draft_batch,m.peak_leases),(4,4,4))
+            self.custody(s,m)
+            reused=s.Job(nf.prompt(600,7),500);s.run([(reused,0)])
+            self.assertEqual(reused.text,reference(nf.prompt(600,7),500))
+            self.assertGreater(m.reused_slots,0);self.custody(s,m)
+
+    def test_four_slot_retention_rejects_fifth_admission_and_capacity_drift(self):
+        s=scenario(slots=4)
+        with s.installed():
+            g,m,c=s.generator()
+            for i in range(4):g.enqueue(s.Job(nf.prompt(300,i),8))
+            with self.assertRaisesRegex(ValueError,'four distinct jobs'):
+                g.enqueue(s.Job(nf.prompt(300,8),8))
+            self.assertEqual(len(c.jobs),4)
+            m.slots=2
+            with self.assertRaises(b2.StopSharedGeneration):c.check_owner()
+
     def test_two_concurrent_distinct_jobs_are_lossless_on_distinct_slots(self):
         s = scenario()
         slots = []

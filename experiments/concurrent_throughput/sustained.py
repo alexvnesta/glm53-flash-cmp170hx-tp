@@ -1,6 +1,7 @@
 """Fixed-work multi-agent load with immediate backfill and observed token counters.
 
-The server retains two active slots. Four agents create an intentional queue.
+Two active slots are required by default. A four-slot trial requires an explicit
+--active-sequences 4; prompts, token budgets and oracles remain identical.
 Rates use completion tokens including reasoning, never SSE chunk counts.
 """
 import argparse
@@ -37,7 +38,7 @@ def check_traffic(h, identity, baseline, owned, started, admitted):
         raise RuntimeError('Unowned traffic arrived; load yields')
 
 
-def summarize(rows, samples, agents, wall, warmup=5):
+def summarize(rows, samples, agents, wall, warmup=5, active_sequences=2):
     tokens = sum(r['usage']['completion_tokens'] for r in rows)
     by_agent = []
     for a in range(agents):
@@ -57,6 +58,8 @@ def summarize(rows, samples, agents, wall, warmup=5):
         interval = {'seconds': dt, 'aggregate_tok_s': sum(delta)/dt,
                     'per_agent_tok_s': [n/dt for n in delta],
                     'fraction_two_active': sum(s['active_sequences']==2 for s in steady)/len(steady),
+                    'fraction_capacity_active': sum(s['active_sequences']==active_sequences for s in steady)/len(steady),
+                    'peak_active_sequences': max(s['active_sequences'] for s in samples),
                     'mean_active_sequences': statistics.mean(s['active_sequences'] for s in steady),
                     'mean_waiting': statistics.mean(s['waiting'] for s in steady)}
     return {'wall_s': wall, 'tokens': tokens, 'aggregate_tok_s': tokens/wall,
@@ -68,19 +71,21 @@ async def run(args):
     args.output.mkdir(parents=True, exist_ok=False)
     report = {'completed': False, 'settings': vars(args)|{'output': str(args.output)}, 'runs': []}
     pair = fixtures(args.requests)
+    def require_idle(h):
+        measure.require_idle(h, args.active_sequences)
     report['fixture_sha256'] = hashlib.sha256(json.dumps(pair,sort_keys=True).encode()).hexdigest()
     path = args.output/'results.json'
     def save(): path.write_text(json.dumps(report,indent=2)+'\n')
     async with httpx.AsyncClient(base_url=args.base_url, timeout=httpx.Timeout(90,connect=3),
                                 limits=httpx.Limits(max_connections=12)) as client:
         try:
-            initial=await measure.health(client);measure.require_idle(initial)
+            initial=await measure.health(client);require_idle(initial)
             report['identity']=measure.identity(initial)
             await asyncio.sleep(1)
-            measure.require_idle(await measure.health(client))
+            require_idle(await measure.health(client))
             for effort in args.effort:
                 for agents in args.agents:
-                    before=await measure.health(client);measure.require_idle(before)
+                    before=await measure.health(client);require_idle(before)
                     assert measure.identity(before)==report['identity']
                     row={'agents':agents,'effort':effort,'requests':[],'samples':[]}
                     report['runs'].append(row);save()
@@ -148,7 +153,7 @@ async def run(args):
                         after=await measure.health(client)
                         if not after['busy'] and not after['request_metrics']['active']:break
                         await asyncio.sleep(.2)
-                    measure.require_idle(after)
+                    require_idle(after)
                     assert after['request_queue']['admitted']==baseline_admitted+len(pair),'Other traffic arrived'
                     assert len(owned)==len(pair)==len(row['requests'])
                     for record in after['request_metrics']['recent']:
@@ -156,7 +161,8 @@ async def run(args):
                     assert set(completed_metrics)==owned,'Per-request metrics missing'
                     assert all(r['outcome']=='completed' for r in completed_metrics.values())
                     row['server_metrics']=list(completed_metrics.values())
-                    row['summary']=summarize(row['requests'],row['samples'],agents,wall)
+                    row['summary']=summarize(row['requests'],row['samples'],agents,wall,
+                                             active_sequences=args.active_sequences)
                     row['ring_before']=before['concurrent_ring'];row['ring_after']=after['concurrent_ring']
                     save()
                     print(json.dumps({'effort':effort,'submitting_agents':agents,**row['summary']}),flush=True)
@@ -174,6 +180,8 @@ def main():
     p.add_argument('--agents',nargs='+',type=int,choices=(1,2,4),default=[1,2,4])
     p.add_argument('--effort',nargs='+',choices=('low','high'),default=['high'])
     p.add_argument('--requests',type=int,default=24)
+    p.add_argument('--active-sequences',type=int,choices=(2,4),default=2,
+                   help='Require this exact server capacity; default remains the qualified two-slot profile')
     args=p.parse_args()
     if not 8<=args.requests<=64 or args.requests%4:p.error('Use 8..64 requests in multiples of four')
     asyncio.run(run(args))

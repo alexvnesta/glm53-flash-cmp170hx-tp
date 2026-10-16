@@ -106,7 +106,7 @@ def b2_retention_options(args, concurrency, retention):
     target=0 if target is None else target
     if type(target) is not int or not 0<=target<=8:
         raise ValueError('B2 target CPU budget must be an integer GiB from 0 through 8')
-    if (not concurrency.enabled or concurrency.max_sequences!=2
+    if (not concurrency.enabled or concurrency.max_sequences not in (2,4)
             or not _b2_pool_ok(args)
             or getattr(args,'num_draft_tokens',None)!=7
             or getattr(args,'tensor_parallel',False) is not True
@@ -115,5 +115,5 @@ def b2_retention_options(args, concurrency, retention):
             or getattr(args,'dflash_prefix_cache',False)
             or getattr(args,'cpu_cache_size',0)):
         raise ValueError('B2 session candidate requires exact 393216-token TP/K7 (a larger pool only with '
-                         'EXL3_MLA_KIDX_RING and --context-cap), two sequences and its own paired owner')
+                         'EXL3_MLA_KIDX_RING and --context-cap), two or four sequences and its own paired owner')
     return B2RetentionOptions(True,target*1024**3,prefix if shared else 0)

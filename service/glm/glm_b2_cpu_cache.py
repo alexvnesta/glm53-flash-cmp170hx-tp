@@ -39,7 +39,7 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
                 or g.cpu_page_cache is not None
                 or g.pagetable.cpu_tier is not None or g.num_remaining_jobs()
                 or g.job_serial or g.pagetable.referenced_pages
-                or g.max_batch_size != 2 or g.cache.num_slots < 2):
+                or g.max_batch_size != coordinator.slots or g.cache.num_slots < coordinator.slots):
             raise ValueError('B2 target tier must register on its exact fresh owned coordinator')
         self.coordinator=coordinator
         super().__init__([g.cache],max_size)
@@ -61,8 +61,8 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
         self.coordinator.check_owner()
         g=pagetable.generator
         if (g is not self.coordinator.generator or g.model is not self.model
-                or g.cache is not self.cache or g.max_batch_size != 2
-                or g.cache.num_slots < 2 or g.enable_defrag is not False
+                or g.cache is not self.cache or g.max_batch_size != self.coordinator.slots
+                or g.cache.num_slots < self.coordinator.slots or g.enable_defrag is not False
                 or g.num_remaining_jobs() or g.job_serial or pagetable.referenced_pages
                 or pagetable.cpu_tier is not None or g.cpu_page_cache is not None
                 or pagetable.cache is not self.cache or pagetable.max_pages != self.max_pages
@@ -83,8 +83,8 @@ class B2TargetCPUPageCache(LazyTPTargetCPUPageCache):
         if (self.closed or c.tier is not self or g is not self._generator_owner
                 or g.model is not self.model or g.cache is not self.cache
                 or getattr(g.cache,'owner_serial',None)!=self.cache_owner_serial
-                or g.enable_defrag is not False or g.max_batch_size!=2
-                or g.cache.num_slots<2 or g.cpu_page_cache is not self
+                or g.enable_defrag is not False or g.max_batch_size!=c.slots
+                or g.cache.num_slots<c.slots or g.cpu_page_cache is not self
                 or self.pagetable.cpu_tier is not self or self.pagetable.cache is not self.cache
                 or self.cache.max_num_tokens!=self.max_pages*256
                 or self.pagetable.max_pages!=self.max_pages

@@ -11,6 +11,7 @@ from glm_concurrent_options import concurrent_options,CapacityGate
 from glm_concurrent_async import concurrent_generator_class
 from glm_async import responsive_generator_class
 from glm_admission import RequestAdmission,AdmissionPolicy
+from glm_b2_options import b2_retention_options
 
 
 def args(**changes):
@@ -22,6 +23,16 @@ def args(**changes):
     return NS(**values)
 
 class Options(unittest.TestCase):
+    def test_paired_retention_four_slots_is_explicit_and_three_is_rejected(self):
+        retention=NS(enabled=False,target_cpu_bytes=0,recurrent_bytes=5*1024**3)
+        for slots in (2,4):
+            a=args(autosplit_max_batch_size=slots,concurrent_max_sequences=slots,
+                   num_draft_tokens=7,experimental_b2_session_cache=True)
+            self.assertTrue(b2_retention_options(a,concurrent_options(a,2048),retention).enabled)
+        a=args(autosplit_max_batch_size=3,concurrent_max_sequences=3,
+               num_draft_tokens=7,experimental_b2_session_cache=True)
+        with self.assertRaises(ValueError):b2_retention_options(a,concurrent_options(a,2048),retention)
+
     def test_default_is_original_single(self):
         a=NS();o=concurrent_options(a,2048)
         self.assertEqual((o.enabled,o.max_sequences,o.generator_kwargs()),(False,1,{}))
