@@ -1,0 +1,1029 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-16",
+  "scope": "Two independent bounded synthetic requests on two CMP170HX cards; no general coding or multi-agent score",
+  "decision": "Experimental only; production restored; high-effort strict JSON failures block promotion",
+  "settings": {
+    "active_slots": 2,
+    "target_bpw": 3.05,
+    "draft_bpw": 6,
+    "draft_tokens": 7,
+    "hybrid_suffix_draft_tokens": 15,
+    "cache_pool_tokens": 655360,
+    "context_cap": 392960,
+    "recurrent_state_dtype": "fp16",
+    "weightless_alpha": 2.0
+  },
+  "candidate_identity": {
+    "native_sha256": "6f29d6fec981e09825fe1be463ca0f2effa4e32df24ce2108a7532e3bfb52649",
+    "profile_digest": "3d1836fe8570fe09b7500af42f00ed3b00709c3ea2c2875e6c3e355f93bfe6e7",
+    "changed_sources": {
+      "exllamav3/modules/mlp.py": {
+        "before": "9182aff3a33a796e8168004ca7d6eb56d927c2a3c37e274b588d24e131a58b43",
+        "after": "6b45c81491f8c270f0ae09b6711fd4f59d87d3e457375ce6b214371e80f4342e"
+      },
+      "exllamav3/modules/block_sparse_mlp.py": {
+        "before": "a2de1a14591a17aa9935e9736f115e4a375af813166043cc3fb0f53e47af52a3",
+        "after": "4d836bbca1fbadb2833e9b04145f39d26df7ae7735b4bc2953228316a69812e8"
+      },
+      "exllamav3/exllamav3_ext/libtorch/mlp.h": {
+        "before": "a0e2d7b52915d826dfc0731c015a9ba10086ac05f2f16c5c32e642a2a8b480e4",
+        "after": "be968e3f0d2b043af26b8f6da915a31634ba259f02208686be0023cafc60c026"
+      },
+      "exllamav3/exllamav3_ext/bindings.cpp": {
+        "before": "7f402ca3c586d7c49725e2edb1c26c2481069c68fd8f3e6f6c55925c93e18242",
+        "after": "ebe019275c8897f0cb75dd18b95e6dd256796653571a9307d4fd5b3925b3f2da"
+      }
+    }
+  },
+  "production_identity": {
+    "native_sha256": "ee120e00c9c938c7387f51936a7ea5547557f4c9e4a386e37370f5dbb02d4c42",
+    "profile_digest": "6a647e6e312ec005625ea35d4549bf1a88ad06b2b3a3771715a35be80a750471"
+  },
+  "candidate_direct": [
+    {
+      "source": {
+        "receipt": "window3/structured/results.json",
+        "sha256": "bcfa815907d58d15dd65d1f2318e033957d837a6d45f7b4c9db21ea40512a1e2"
+      },
+      "effort": "low",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        3.3944448580150492,
+        3.30246446095407
+      ],
+      "concurrent_s": [
+        2.927931963989977,
+        2.9302422300097533
+      ],
+      "serial_mean_s": 3.3484546594845597,
+      "concurrent_mean_s": 2.929087096999865,
+      "throughput_ratio_concurrent_to_serial": 1.1431734696159204,
+      "completion_tokens_serial": [
+        385,
+        385
+      ],
+      "completion_tokens_concurrent": [
+        385,
+        385
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.268908001948148,
+          0.23142022697720677,
+          0.2260947489994578,
+          0.2290100019890815
+        ],
+        "concurrent": [
+          0.4262594789615832,
+          0.4274796659592539,
+          0.43021524796495214,
+          0.4314875830314122
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.2743855610024184,
+          2.1199087210115977,
+          1.205619607004337,
+          2.096719535999
+        ],
+        "concurrent": [
+          2.045088685990777,
+          2.927196228003595,
+          2.045782482950017,
+          2.9295582300401293
+        ]
+      },
+      "workload": "structured",
+      "completion_time_reduction_vs_direct_production": 0.10753530445323467
+    },
+    {
+      "source": {
+        "receipt": "window3/structured/results.json",
+        "sha256": "bcfa815907d58d15dd65d1f2318e033957d837a6d45f7b4c9db21ea40512a1e2"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        4.173176923999563,
+        4.170558693003841
+      ],
+      "concurrent_s": [
+        3.5423384240129963,
+        3.4653131830273196
+      ],
+      "serial_mean_s": 4.171867808501702,
+      "concurrent_mean_s": 3.503825803520158,
+      "throughput_ratio_concurrent_to_serial": 1.190660735562364,
+      "completion_tokens_serial": [
+        465,
+        465
+      ],
+      "completion_tokens_concurrent": [
+        465,
+        465
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.22827161999884993,
+          0.22737119102384895,
+          0.22268804197665304,
+          0.22397631697822362
+        ],
+        "concurrent": [
+          0.420228942995891,
+          0.4214583769789897,
+          0.42556845903163776,
+          0.4268955469597131
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.8582056049490348,
+          2.314847002038732,
+          1.8377004439826123,
+          2.332736797980033
+        ],
+        "concurrent": [
+          3.1301985849859193,
+          3.5416356709902175,
+          3.049045378982555,
+          3.4646306579816155
+        ]
+      },
+      "workload": "structured",
+      "completion_time_reduction_vs_direct_production": 0.11940352636327645
+    },
+    {
+      "source": {
+        "receipt": "window3/mixed/results.json",
+        "sha256": "80eee9a6f0bab66ea666f27a405c6db67dc5b280390701fea9649287b7f9bd0d"
+      },
+      "effort": "low",
+      "completed_report": false,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        3.520465819980018,
+        3.464795420994051
+      ],
+      "concurrent_s": [
+        3.2226128749898635,
+        3.060696641972754
+      ],
+      "serial_mean_s": 3.4926306204870343,
+      "concurrent_mean_s": 3.141654758481309,
+      "throughput_ratio_concurrent_to_serial": 1.1117168782019158,
+      "completion_tokens_serial": [
+        344,
+        344
+      ],
+      "completion_tokens_concurrent": [
+        344,
+        344
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.3498815599596128,
+          0.23303440300514922,
+          0.2976756279822439,
+          0.22953354800119996
+        ],
+        "concurrent": [
+          0.5064797090017237,
+          0.5078371160198003,
+          0.4944166329805739,
+          0.4958766340278089
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.38449332799064,
+          2.1048969569965266,
+          1.3312831899966113,
+          2.107441025960725
+        ],
+        "concurrent": [
+          2.3988769910065457,
+          3.2218646550318226,
+          2.2441024229628965,
+          3.06002095900476
+        ]
+      },
+      "workload": "mixed",
+      "note": "Low effort completed two comparisons; the overall report later failed at high effort"
+    }
+  ],
+  "production_direct_controls": [
+    {
+      "source": {
+        "receipt": "direct-production-control/structured/results.json",
+        "sha256": "c7b40e8764acf419db8b70492f445fe592dc8c906bedb76906ee4b3c4e7c8fda"
+      },
+      "effort": "low",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        3.4842866780236363,
+        3.289650809019804
+      ],
+      "concurrent_s": [
+        3.2940530860214494,
+        3.2699871759978123
+      ],
+      "serial_mean_s": 3.38696874352172,
+      "concurrent_mean_s": 3.282020131009631,
+      "throughput_ratio_concurrent_to_serial": 1.031976833877556,
+      "completion_tokens_serial": [
+        385,
+        385
+      ],
+      "completion_tokens_concurrent": [
+        385,
+        385
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.3467475510551594,
+          0.21948386199073866,
+          0.22329848300432786,
+          0.22919989400543272
+        ],
+        "concurrent": [
+          0.2181945850024931,
+          0.49343052197946236,
+          0.23024261300452054,
+          0.4963329100282863
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.399509400012903,
+          2.0846303689759225,
+          1.2021774140303023,
+          2.087353818002157
+        ],
+        "concurrent": [
+          2.422919045027811,
+          3.293414463987574,
+          2.4055234860279597,
+          3.2693726990255527
+        ]
+      },
+      "workload": "structured"
+    },
+    {
+      "source": {
+        "receipt": "direct-production-control/structured/results.json",
+        "sha256": "c7b40e8764acf419db8b70492f445fe592dc8c906bedb76906ee4b3c4e7c8fda"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        4.151084957993589,
+        4.123122231976595
+      ],
+      "concurrent_s": [
+        3.9965208200155757,
+        3.9613257269957103
+      ],
+      "serial_mean_s": 4.137103594985092,
+      "concurrent_mean_s": 3.978923273505643,
+      "throughput_ratio_concurrent_to_serial": 1.039754554337029,
+      "completion_tokens_serial": [
+        465,
+        465
+      ],
+      "completion_tokens_concurrent": [
+        465,
+        465
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.21960492199286819,
+          0.22710765298688784,
+          0.22128886898281053,
+          0.22008386097149923
+        ],
+        "concurrent": [
+          0.4341136420262046,
+          0.43528323102509603,
+          0.4534142960328609,
+          0.45478919497691095
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.820183222007472,
+          2.330769626016263,
+          1.8077936450135894,
+          2.3151977689703926
+        ],
+        "concurrent": [
+          3.5783001350355335,
+          3.9957913150428794,
+          3.553004661051091,
+          3.9606537810177542
+        ]
+      },
+      "workload": "structured"
+    },
+    {
+      "source": {
+        "receipt": "direct-production-control/diagnostic-high-0/results.json",
+        "sha256": "b4af796fa4c087c0c08c13467a7c75fb8ec28724d4a66a4f21d9fba0b281ac04"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 1,
+      "serial_s": [
+        4.071898975991644
+      ],
+      "concurrent_s": [
+        4.497105010028463
+      ],
+      "serial_mean_s": 4.071898975991644,
+      "concurrent_mean_s": 4.497105010028463,
+      "throughput_ratio_concurrent_to_serial": 0.9054489425778102,
+      "completion_tokens_serial": [
+        366
+      ],
+      "completion_tokens_concurrent": [
+        395
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.34356315701734275,
+          0.21964430599473417
+        ],
+        "concurrent": [
+          0.5186928909970447,
+          0.5201657169964164
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.7348221970023587,
+          2.3070357969845645
+        ],
+        "concurrent": [
+          4.207278318994213,
+          4.496432271960657
+        ]
+      },
+      "workload": "mixed"
+    },
+    {
+      "source": {
+        "receipt": "direct-production-control/diagnostic-high-1/results.json",
+        "sha256": "15302449172a79ebd9515c9a26184b8a224ec849edb2f0abab1b845f6fa6f8c7"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 1,
+      "serial_s": [
+        4.07289138896158
+      ],
+      "concurrent_s": [
+        4.507533042982686
+      ],
+      "serial_mean_s": 4.07289138896158,
+      "concurrent_mean_s": 4.507533042982686,
+      "throughput_ratio_concurrent_to_serial": 0.903574383176679,
+      "completion_tokens_serial": [
+        366
+      ],
+      "completion_tokens_concurrent": [
+        395
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.35590454295743257,
+          0.22504639998078346
+        ],
+        "concurrent": [
+          0.5215816450072452,
+          0.5229600509628654
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.7342272179666907,
+          2.3108700339798816
+        ],
+        "concurrent": [
+          4.212793979037087,
+          4.50689787697047
+        ]
+      },
+      "workload": "mixed"
+    },
+    {
+      "source": {
+        "receipt": "direct-production-control/diagnostic-high-2/results.json",
+        "sha256": "2b1dfb281e22945f6dba8dc67a9a6ffcb93b8075a3e72660699324855d2285f8"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 1,
+      "serial_s": [
+        4.0818499640445225
+      ],
+      "concurrent_s": [
+        4.644337752019055
+      ],
+      "serial_mean_s": 4.0818499640445225,
+      "concurrent_mean_s": 4.644337752019055,
+      "throughput_ratio_concurrent_to_serial": 0.8788874069871426,
+      "completion_tokens_serial": [
+        366
+      ],
+      "completion_tokens_concurrent": [
+        395
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.33498449402395636,
+          0.22383013303624466
+        ],
+        "concurrent": [
+          0.5539615449961275,
+          0.5566841320251115
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.732309859013185,
+          2.3189733260078356
+        ],
+        "concurrent": [
+          4.347381117986515,
+          4.643656748987269
+        ]
+      },
+      "workload": "mixed"
+    }
+  ],
+  "production_routed_controls": [
+    {
+      "source": {
+        "receipt": "routed-production-control/results.json",
+        "sha256": "0034e83655e30daf2a3ae67f76a4e26ec4efaf45fe5177d07cc7bcf598b5a986"
+      },
+      "effort": "low",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        3.355163879983593,
+        3.321636641980149
+      ],
+      "concurrent_s": [
+        3.3161582429893315,
+        3.285411592980381
+      ],
+      "serial_mean_s": 3.338400260981871,
+      "concurrent_mean_s": 3.3007849179848563,
+      "throughput_ratio_concurrent_to_serial": 1.0113958782324959,
+      "completion_tokens_serial": [
+        385,
+        385
+      ],
+      "completion_tokens_concurrent": [
+        385,
+        385
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.2679124850546941,
+          0.2304257020005025,
+          0.22724286001175642,
+          0.23339487705379725
+        ],
+        "concurrent": [
+          0.2305057229823433,
+          0.49956297100288793,
+          0.44280582101782784,
+          0.4427560259937309
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.2437963710399345,
+          2.1111928279860877,
+          1.2091521729598753,
+          2.11234609602252
+        ],
+        "concurrent": [
+          2.4497782270191237,
+          3.315500855038408,
+          2.4022607739898376,
+          3.2847545969998464
+        ]
+      },
+      "workload": "structured"
+    },
+    {
+      "source": {
+        "receipt": "routed-production-control/results.json",
+        "sha256": "0034e83655e30daf2a3ae67f76a4e26ec4efaf45fe5177d07cc7bcf598b5a986"
+      },
+      "effort": "high",
+      "completed_report": true,
+      "completed_comparison_repeats": 2,
+      "serial_s": [
+        4.173436112992931,
+        4.174040951009374
+      ],
+      "concurrent_s": [
+        4.031749126967043,
+        4.061516068002675
+      ],
+      "serial_mean_s": 4.173738532001153,
+      "concurrent_mean_s": 4.046632597484859,
+      "throughput_ratio_concurrent_to_serial": 1.031410297686846,
+      "completion_tokens_serial": [
+        465,
+        465
+      ],
+      "completion_tokens_concurrent": [
+        465,
+        465
+      ],
+      "all_correct": true,
+      "real_draft_and_target_batch_every_repeat": true,
+      "cached_tokens": 0,
+      "request_ttft_s": {
+        "serial": [
+          0.22719189297640696,
+          0.23157035402255133,
+          0.22580487001687288,
+          0.22967406501993537
+        ],
+        "concurrent": [
+          0.2306456789956428,
+          0.5032707389909774,
+          0.22990740701789036,
+          0.5085089919739403
+        ]
+      },
+      "request_finish_s": {
+        "serial": [
+          1.8432599929510616,
+          2.330048848001752,
+          1.854114447021857,
+          2.319755930977408
+        ],
+        "concurrent": [
+          3.5566313049639575,
+          4.031081449997146,
+          3.5876122300396673,
+          4.060809627000708
+        ]
+      },
+      "workload": "structured"
+    }
+  ],
+  "high_effort_candidate_diagnostics": [
+    {
+      "source": {
+        "receipt": "window4/diagnostic-high-0/results.json",
+        "sha256": "6332356b2ea410db18848f3565bef93f293b75a763207e1c620d033862c46688"
+      },
+      "attempt": 0,
+      "original_strict_check_passed": false,
+      "failed_response": {
+        "case": "compress-runs-code",
+        "ttft_s": 0.3037321240408346,
+        "first_visible_s": 1.5596798399928957,
+        "request_id": "chatcmpl-28e52807a78842e9a1267322c1b5c86f",
+        "finish_s": 3.4242578970151953,
+        "usage": {
+          "prompt_tokens": 85,
+          "completion_tokens": 131,
+          "total_tokens": 216,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "draft_tokens": 203,
+          "draft_tokens_accepted": 102
+        },
+        "timings": {
+          "http_queue_ms": 0.6240749498829246,
+          "prompt_ms": 228.03568840026855,
+          "predicted_ms": 3117.2027587890625,
+          "queue_ms": 10.725736618041992,
+          "prompt_n": 85,
+          "predicted_n": 131,
+          "source": "exllamav3",
+          "cached_tokens": 0,
+          "cache_n": 0,
+          "draft_stats": {
+            "rounds": 29,
+            "proposed": 203,
+            "accepted": 102,
+            "acceptance": 0.5024630541871922
+          },
+          "draft_n": 203,
+          "draft_n_accepted": 102
+        },
+        "finish_reason": "stop",
+        "answer": "```json\n{\"code\": \"def compress_runs(values):\\n    result = []\\n    i = 0\\n    n = len(values)\\n    while i < n:\\n        current = values[i]\\n        count = 1\\n        j = i + 1\\n        while j < n and values[j] == current:\\n            count += 1\\n            j += 1\\n        result.append((current, count))\\n        i = j\\n    return result\\n\"}\n```",
+        "reasoning_characters": 99,
+        "correct": false,
+        "validation_error": {
+          "type": "JSONDecodeError",
+          "message": "Expecting value: line 1 column 1 (char 0)"
+        }
+      },
+      "posthoc_analysis": {
+        "attempt": 0,
+        "request_id": "chatcmpl-28e52807a78842e9a1267322c1b5c86f",
+        "raw_answer_sha256": "d8a1c5c42381bc4aae9d2fa5aa068a0fa0d335b5fde19d9b4a52932028f29766",
+        "original_strict_check_passed": false,
+        "diagnosis": "Markdown JSON fences violate the raw JSON response contract",
+        "posthoc_extracted_code_passed_six_cases_and_nonmutation": true,
+        "changes_to_original_score": false
+      }
+    },
+    {
+      "source": {
+        "receipt": "window4/diagnostic-high-1/results.json",
+        "sha256": "1ecb715bca479ed54f45bec3a1512aa61aeba0ae9cf5276638e1d8614e5eac24"
+      },
+      "attempt": 1,
+      "original_strict_check_passed": false,
+      "failed_response": {
+        "case": "compress-runs-code",
+        "ttft_s": 0.30577321897726506,
+        "first_visible_s": 1.5811029439792037,
+        "request_id": "chatcmpl-140f1b5ef32542c596ae5b9649097e34",
+        "finish_s": 3.3345220499904826,
+        "usage": {
+          "prompt_tokens": 85,
+          "completion_tokens": 131,
+          "total_tokens": 216,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "draft_tokens": 203,
+          "draft_tokens_accepted": 102
+        },
+        "timings": {
+          "http_queue_ms": 0.6433720118366182,
+          "prompt_ms": 226.4854907989502,
+          "predicted_ms": 3030.465841293335,
+          "queue_ms": 9.702205657958984,
+          "prompt_n": 85,
+          "predicted_n": 131,
+          "source": "exllamav3",
+          "cached_tokens": 0,
+          "cache_n": 0,
+          "draft_stats": {
+            "rounds": 29,
+            "proposed": 203,
+            "accepted": 102,
+            "acceptance": 0.5024630541871922
+          },
+          "draft_n": 203,
+          "draft_n_accepted": 102
+        },
+        "finish_reason": "stop",
+        "answer": "```json\n{\"code\": \"def compress_runs(values):\\n    result = []\\n    i = 0\\n    n = len(values)\\n    while i < n:\\n        current = values[i]\\n        count = 1\\n        j = i + 1\\n        while j < n and values[j] == current:\\n            count += 1\\n            j += 1\\n        result.append((current, count))\\n        i = j\\n    return result\\n\"}\n```",
+        "reasoning_characters": 99,
+        "correct": false,
+        "validation_error": {
+          "type": "JSONDecodeError",
+          "message": "Expecting value: line 1 column 1 (char 0)"
+        }
+      },
+      "posthoc_analysis": {
+        "attempt": 1,
+        "request_id": "chatcmpl-140f1b5ef32542c596ae5b9649097e34",
+        "raw_answer_sha256": "d8a1c5c42381bc4aae9d2fa5aa068a0fa0d335b5fde19d9b4a52932028f29766",
+        "original_strict_check_passed": false,
+        "diagnosis": "Markdown JSON fences violate the raw JSON response contract",
+        "posthoc_extracted_code_passed_six_cases_and_nonmutation": true,
+        "changes_to_original_score": false
+      }
+    },
+    {
+      "source": {
+        "receipt": "window4/diagnostic-high-2/results.json",
+        "sha256": "d53752a2b80644a1a55ead07e45266662b2fdfec24a7219c2511559d4251c6b5"
+      },
+      "attempt": 2,
+      "original_strict_check_passed": false,
+      "failed_response": {
+        "case": "compress-runs-code",
+        "ttft_s": 0.4880340580129996,
+        "first_visible_s": 1.602860711980611,
+        "request_id": "chatcmpl-97c111ff628b4fc08a8c5c7d3d87bcf0",
+        "finish_s": 3.240441275003832,
+        "usage": {
+          "prompt_tokens": 85,
+          "completion_tokens": 116,
+          "total_tokens": 201,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "draft_tokens": 196,
+          "draft_tokens_accepted": 88
+        },
+        "timings": {
+          "http_queue_ms": 0.572927005123347,
+          "prompt_ms": 373.9473819732666,
+          "predicted_ms": 2779.5326709747314,
+          "queue_ms": 15.474796295166016,
+          "prompt_n": 85,
+          "predicted_n": 116,
+          "source": "exllamav3",
+          "cached_tokens": 0,
+          "cache_n": 0,
+          "draft_stats": {
+            "rounds": 28,
+            "proposed": 196,
+            "accepted": 88,
+            "acceptance": 0.4489795918367347
+          },
+          "draft_n": 196,
+          "draft_n_accepted": 88
+        },
+        "finish_reason": "stop",
+        "answer": "```json\n{\"code\": \"def compress_runs(values):\\n    result = []\\n    i = 0\\n    n = len(values)\\n    while i < n:\\n        j = i\\n        while j < n and values[j] == values[i]:\\n            j = j + 1\\n        result.append((values[i], j - i))\\n        i = j\\n    return result\\n\"}\n```",
+        "reasoning_characters": 99,
+        "correct": false,
+        "validation_error": {
+          "type": "JSONDecodeError",
+          "message": "Expecting value: line 1 column 1 (char 0)"
+        }
+      },
+      "posthoc_analysis": {
+        "attempt": 2,
+        "request_id": "chatcmpl-97c111ff628b4fc08a8c5c7d3d87bcf0",
+        "raw_answer_sha256": "e90d1507827c1d17d3e1cab74c255be747cfa1d9f9a387529b6e32be7cc8d197",
+        "original_strict_check_passed": false,
+        "diagnosis": "Markdown JSON fences violate the raw JSON response contract",
+        "posthoc_extracted_code_passed_six_cases_and_nonmutation": true,
+        "changes_to_original_score": false
+      }
+    }
+  ],
+  "initial_high_effort_failure": {
+    "source": {
+      "receipt": "window3/mixed/results.json",
+      "sha256": "80eee9a6f0bab66ea666f27a405c6db67dc5b280390701fea9649287b7f9bd0d"
+    },
+    "status": "Parallel wave failed; nested exception and answer were lost before logging was fixed",
+    "reclassified_or_repaired": false,
+    "included_in_successful_timing_comparisons": false
+  },
+  "validation": {
+    "new_cpu_suite": {
+      "passed_linux": 19,
+      "macos_passed": 18,
+      "macos_linux_only_skips": 1
+    },
+    "existing_concurrency_cpu_suite": {
+      "run": 63,
+      "passed": 62,
+      "existing_skips": 1
+    },
+    "gpu_numerical_cases": {
+      "passed": true,
+      "source_oracle_sha256": "76cb73042440b44d548b57a1b83ecc8052e5c9a1784656fa8b7783cb53e2f8fb",
+      "reference": "Upstream reconstruct/dense oracle; unchanged 3e-3 relative-to-max tolerance",
+      "cases": [
+        {
+          "device": 0,
+          "rows": 1,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 2,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 4,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 7,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 8,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 9,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 16,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 9,
+          "shape": [
+            4096,
+            2048
+          ],
+          "expert_range_masking": true,
+          "passed": true
+        },
+        {
+          "device": 0,
+          "rows": 16,
+          "shape": [
+            4096,
+            2048
+          ],
+          "expert_range_masking": true,
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 1,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 2,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 4,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 7,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 8,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 9,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 16,
+          "shape": [
+            256,
+            256
+          ],
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 9,
+          "shape": [
+            4096,
+            2048
+          ],
+          "expert_range_masking": true,
+          "passed": true
+        },
+        {
+          "device": 1,
+          "rows": 16,
+          "shape": [
+            4096,
+            2048
+          ],
+          "expert_range_masking": true,
+          "passed": true
+        }
+      ]
+    },
+    "functional_requests_passed": 31,
+    "disconnect_cleanup": true,
+    "survivor_and_slot_reuse": true,
+    "final_native_ring_leases": 0,
+    "new_long_soak": false,
+    "real_agent_trace_qualification": false
+  },
+  "production_restored": {
+    "status": "ok",
+    "sole_gpu_owner": true,
+    "qwen_inactive": true,
+    "native_sha256": "ee120e00c9c938c7387f51936a7ea5547557f4c9e4a386e37370f5dbb02d4c42",
+    "profile_digest": "6a647e6e312ec005625ea35d4549bf1a88ad06b2b3a3771715a35be80a750471",
+    "weightless": {
+      "enabled": true,
+      "mode": "project",
+      "alpha": 2.0,
+      "layers": 44,
+      "width": 16384,
+      "vector_sha256": "0ccce6b748f87da81505ff2bc3ca82429110940b6c0def60063d304785ccc00c",
+      "base_revision": "3f1971b7b5f7a528c9c4ef6212c8785298a8c24a",
+      "numerics_verified_devices": [
+        "cuda:0",
+        "cuda:1"
+      ]
+    },
+    "capacity": 2,
+    "cache_tokens": 655360
+  },
+  "limitations": [
+    "Two timing repeats per structured cell; three separate high-effort diagnostic attempts",
+    "Initial and post-restart production timings differ; no causal attribution to routing or process age",
+    "No statistical significance claim, long-context stress, four-slot test or new production soak",
+    "Removing Markdown fences is posthoc diagnosis only; failed official checks remain failed"
+  ]
+}
