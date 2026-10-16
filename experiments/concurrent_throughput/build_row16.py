@@ -45,6 +45,9 @@ def build(base, candidate, python, expected_native):
         raise ValueError("Qualified native SHA mismatch")
     verify(candidate / "engine", candidate / "engine.sha256")
     receipt = json.loads((candidate / "preparation.json").read_text())
+    rows = receipt['decode_max_rows']
+    if type(rows) is not int or rows not in (16, 32):
+        raise ValueError('Unsupported native decode capacity')
     changes = receipt["changed_sources"]
     base_files = {p.relative_to(base / "engine").as_posix(): sha(p)
                   for p in (base / "engine").rglob("*")
@@ -104,11 +107,11 @@ def build(base, candidate, python, expected_native):
     used.append(cmd)
     check_env = {**env, "PYTHONPATH": str(native)}
     subprocess.run([str(python), "-c", "import torch; import exllamav3_ext as e; "
-                    "assert e.decode_max_rows == 16; assert not torch.cuda.is_initialized(); "
-                    "print('native import OK; decode_max_rows=16; CUDA not initialized')"],
+                    f"assert e.decode_max_rows == {rows}; assert not torch.cuda.is_initialized(); "
+                    f"print('native import OK; decode_max_rows={rows}; CUDA not initialized')"],
                    env=check_env, check=True)
     result = {
-        "compiled": True, "gpu_visible": False, "gpu_tests_run": False,
+        "compiled": True, "gpu_visible": False, "gpu_tests_run": False, "decode_max_rows": rows,
         "base_native_sha256": expected_native, "native_sha256": sha(output),
         "rebuilt_objects": sorted(rebuilt), "reused_objects": len(objects) - len(rebuilt),
         "commands": used, "seconds": time.monotonic() - started,
