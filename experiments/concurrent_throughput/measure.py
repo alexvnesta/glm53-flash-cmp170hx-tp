@@ -21,6 +21,21 @@ class OwnedRequests(set):
         self.pending = {}
 
 
+class ProbeResponseFailure(ValueError):
+    def __init__(self, message, response):
+        super().__init__(message)
+        self.response = response
+
+
+def failure_details(error):
+    details = {"type": type(error).__name__, "message": str(error)}
+    if isinstance(error, BaseExceptionGroup):
+        details["exceptions"] = [failure_details(child) for child in error.exceptions]
+    if isinstance(error, ProbeResponseFailure):
+        details["response"] = error.response
+    return details
+
+
 def cases(size=64, workload="structured"):
     pair = [{
         "id": f"array-{start}",
@@ -148,9 +163,9 @@ async def stream(client, case, effort, owned):
     except (ValueError, SyntaxError, OSError, TimeoutError):
         result["correct"] = False
     if not result["correct"]:
-        raise ValueError(f"Known-answer failure: {result}")
+        raise ProbeResponseFailure("Known-answer failure: " + case["id"], result)
     if not usage or not isinstance(usage.get("completion_tokens"), int):
-        raise ValueError("Final token usage missing; cannot compare throughput")
+        raise ProbeResponseFailure("Final token usage missing; cannot compare throughput", result)
     return result
 
 
@@ -298,6 +313,7 @@ async def run(args):
             report["completed"] = True
         except Exception as exc:
             report.update(completed=False, error=f"{type(exc).__name__}: {exc}")
+            report["failure_details"] = failure_details(exc)
             report["interrupted_wave"] = getattr(exc, "probe_context", None)
             print(report["error"], flush=True)
         finally:

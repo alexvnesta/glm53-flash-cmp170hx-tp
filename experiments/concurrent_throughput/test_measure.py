@@ -20,6 +20,16 @@ def snapshot():
 
 
 class GuardTests(unittest.TestCase):
+    def test_nested_parallel_failures_preserve_failed_answer_for_diagnosis(self):
+        response = {"answer": '{"code":"def compress_runs(values): return []"}',
+                    "case": "compress-runs-code", "correct": False}
+        error = ExceptionGroup("parallel wave", [
+            ExceptionGroup("worker", [measure.ProbeResponseFailure("Known-answer failure", response)])])
+        saved = json.loads(json.dumps(measure.failure_details(error)))
+        leaf = saved["exceptions"][0]["exceptions"][0]
+        self.assertEqual(leaf["response"], response)
+        self.assertEqual(leaf["type"], "ProbeResponseFailure")
+
     def test_busy_admission_and_missing_identity_refuse_load(self):
         for key, value in (("busy", True), ("max_active_sequences", 4),
                            ("profile_digest", None)):
@@ -89,8 +99,10 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(result["ttft_s"], result["first_visible_s"])
 
     async def test_incorrect_or_incomplete_outputs_cannot_enter_comparison(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(measure.ProbeResponseFailure) as caught:
             await self.client_response("[1,2]")
+        self.assertEqual(caught.exception.response["answer"], "[1,2]")
+        self.assertFalse(caught.exception.response["correct"])
         with self.assertRaises(ValueError):
             await self.client_response(json.dumps(list(range(100, 116))), usage=False)
 
