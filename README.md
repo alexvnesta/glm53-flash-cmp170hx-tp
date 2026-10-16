@@ -84,6 +84,9 @@ Any OpenAI-compatible client works with base URL `http://127.0.0.1:8012/v1` and 
 - **Reasoning effort:** send `reasoning_effort` (`low`, `high`, `max`), or use the model names `GLM-5.3-Flash-low`,
   `-high`, `-max`. The default is `high`. `max` is much slower on everyday prompts but more careful on hard lookups.
 - **Tools:** standard OpenAI `tools` / `tool_calls`, streaming or not.
+- **JSON objects:** opt in at startup with `--experimental-json-mode` and request
+  `response_format: {"type":"json_object"}`. See the
+  [contract and qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md).
 - **Images:** content parts with `{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}` in user messages.
   PNG, JPEG or WebP; up to 16 images per request. Remote image URLs are refused, so clients must send base64.
 - **Endpoints:** `/v1/chat/completions`, `/v1/completions`, `/v1/models`, `/tokenize`, `/health`.
@@ -138,12 +141,15 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Roadmap
 
-- **Concurrency investigation:** the [October 16 matched measurements](docs/EXLLAMA_CONCURRENCY_2026-10-16.md)
-  found an experimental sixteen-row fused-decode path reduced structured
-  task-pair completion time by 11–12% versus direct-backend controls. GPU
-  numerics, functional and lifecycle checks passed, but high-effort strict JSON
-  formatting failed in three diagnostic repeats. The variant remains
-  experimental and the original production profile is restored.
+- **Concurrency:** the [October 16 qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md)
+  deployed a sixteen-row fused-decode variant on the local host. Structured
+  aggregate throughput rose from 115.8 to 133.0 tok/s at low effort and 111.9
+  to 133.6 tok/s at high when moving from one active request to two. Explicit
+  JSON-object generation passed the high-effort code checks. Runtime soak,
+  restart recovery, failed semantic cells and max-effort token limits are
+  reported separately. The earlier
+  [investigation](docs/EXLLAMA_CONCURRENCY_2026-10-16.md) retains the original
+  prompt-only formatting failures. The general launcher remains unchanged.
 
 - **Engine:** pins upstream dev `0f685aa9fd` with selected upstream recurrent-state/recovery backports and the original four P16 patches. See [engine/NOTES.md](engine/NOTES.md) for source reproduction and [cache/metrics notes](docs/CACHE_AND_OBSERVABILITY.md) for the optional persistent profile.
 

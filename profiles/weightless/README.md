@@ -62,3 +62,8 @@ Use the baseline launcher and its original engine/native directories to restore
 the unsteered profile. Clear the GLM_WEIGHTLESS_* environment variables. An
 operator must first verify no active/queued clients before replacing a healthy
 running model. Retain the old directory and unit override for rollback.
+
+The local host subsequently qualified and deployed the optional sixteen-row
+concurrent decode build with explicit JSON-object output. See the
+[October 16 receipts and limits](../../docs/JSON_ROW16_QUALIFICATION_2026-10-16.md).
+This does not change the general Weightless launcher's engine defaults.

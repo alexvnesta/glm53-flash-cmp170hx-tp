@@ -31,6 +31,7 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from glm_profile import CONTEXT_RESERVE, MODEL_CONTEXT_LIMIT, MODEL_ID, PORT, GENERATION_DEFAULTS
 from glm_tools import prepare_tools, ToolSplitter, names_strict
+import glm_json_output
 from glm_session_options import session_options
 from glm_tp_options import (tp_dflash_options, tp_dflash_health, add_tp_dflash_argument, require_native_tp_dflash,
                             require_tp_dflash_attached)
@@ -179,6 +180,7 @@ class CompletionRequest(BaseModel):
     tools: list[ToolDefinition] | None = None
     tool_choice: Literal["auto", "none", "required"] | NamedToolChoice | None = None
     parallel_tool_calls: bool = True
+    response_format: glm_json_output.ResponseFormat | None = None
     # Accepted for client compatibility. This model always thinks, so thinking "disabled" selects the lowest effort unless
     # reasoning_effort is given; the other fields are standard OpenAI request fields with no effect here.
     thinking: dict | None = None
@@ -274,6 +276,9 @@ async def lifespan(app):
     from glm_b2_options import context_cap_option, cache_geometry
     context_cap = context_cap_option(args)
     draft_options = DFlashOptions.from_environment()
+    json_mode = bool(getattr(args, "experimental_json_mode", False))
+    if json_mode:
+        glm_json_output.check_dependencies()
     if concurrency.enabled and draft_options.adaptive:
         raise ValueError("Concurrent initial profile uses fixed K7; adaptive batching needs separate qualification")
     if getattr(args, "q8_staging", False):
@@ -342,12 +347,17 @@ async def lifespan(app):
         env.filters["tojson"] = lambda value, **kwargs: json.dumps(value, **kwargs)
         template = env.from_string((Path(args.model_dir) / "chat_template.jinja").read_text())
         runtime.update(tokenizer=tokenizer, config=config, template=template,
+                       json_mode=json_mode,
                        lock=CapacityGate(concurrency.max_sequences) if concurrency.enabled else asyncio.Lock(),
                        concurrency=concurrency, b2_retention=b2_retention, admission=RequestAdmission(REQUEST_ADMISSION_POLICY), loaded_at=int(time.time()),
                        context_cap=context_cap, cache_geometry=cache_geometry(cache),
                        # --context-cap decouples the per-request limit from the page pool
                        context_length=min(config.max_position_embeddings,
                                           args.cache_size - CONTEXT_RESERVE if context_cap is None else context_cap))
+        if json_mode:
+            # Populate the upstream tokenizer cache before simultaneous requests
+            # can both pay its first-use construction cost.
+            glm_json_output.build_filter(tokenizer)
         from glm_async import responsive_generator_class
         generator_class = responsive_generator_class(AsyncGenerator)
         if concurrency.enabled:
@@ -378,6 +388,7 @@ async def lifespan(app):
         if concurrency.enabled:
             from glm_native_concurrency import bind_native_concurrency
             bind_native_concurrency(runtime["generator"].generator, concurrency.max_sequences,
+                                    allow_json_output=json_mode,
                                     **({"allow_embeddings": True, "drop_embeddings": not vision.keep_embeddings}
                                        if vision.enabled else {}))
             if b2_retention.enabled:
@@ -452,6 +463,7 @@ async def health():
     concurrent = getattr(generator, "_glm_native_concurrency", None) if runtime["concurrency"].enabled else None
     b2_cache = getattr(generator, "_glm_b2_retention", None)
     return {"status": "ok", "engine": "ExLlamaV3", "model": MODEL_ID, "context_length": runtime["context_length"],
+            "json_output": glm_json_output.health(runtime.get("json_mode", False)),
             "weightless": runtime.get("weightless", {"enabled": False}),
             "profile_digest": runtime.get("profile_digest"),
             "recurrent_state_dtype": "fp32" if runtime["args"].recurrent_state_fp32 else "fp16",
@@ -542,7 +554,8 @@ async def tokenize(body: TokenizeRequest, request: Request):
 
 def chat_token_length(fields):
     """--experimental-vision: the exact prompt length of a chat body, images included, without running the tower."""
-    allowed = ("model", "messages", "tools", "tool_choice", "parallel_tool_calls", "reasoning_effort", "thinking")
+    allowed = ("model", "messages", "tools", "tool_choice", "parallel_tool_calls", "reasoning_effort", "thinking",
+               "response_format")
     try:
         body = CompletionRequest(**{key: value for key, value in fields.items() if key in allowed})
         tool_choice = (body.tool_choice.model_dump() if isinstance(body.tool_choice, NamedToolChoice)
@@ -621,6 +634,10 @@ async def complete(body, request, chat):
         raise HTTPException(400, "Stored completions are unsupported; use store=false")
     if body.model not in (MODEL_ID, "glm", Path(runtime["args"].model_dir).name):
         raise HTTPException(404, f"Unknown model: {body.model}")
+    try:
+        json_mode = glm_json_output.requested(body, enabled=runtime.get("json_mode", False), chat=chat)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
     tools, images = [], []
     tool_choice = (body.tool_choice.model_dump() if isinstance(body.tool_choice, NamedToolChoice)
                    else body.tool_choice)
@@ -677,11 +694,15 @@ async def complete(body, request, chat):
                and body.presence_penalty == 0 else ComboSampler(
                    temperature=body.temperature, top_p=body.top_p,
                    freq_p=body.frequency_penalty, pres_p=body.presence_penalty))
+    # Build independent parser state outside the admission lock and event loop.
+    filters = [await asyncio.to_thread(glm_json_output.build_filter, runtime["tokenizer"])] if json_mode else []
     lock = runtime["lock"]
     ident = ("chatcmpl-" if chat else "cmpl-") + uuid.uuid4().hex
     observation = (runtime["request_metrics"].start(ident, received=received, prompt_tokens=prompt_tokens,
                    effort=body.reasoning_effort, streaming=body.stream, images=len(images))
                    if runtime.get("request_metrics") is not None else None)
+    if observation and json_mode:
+        observation.fields["response_format"] = "json_object"
     try:
         admission_wait = await runtime["admission"].acquire(lock, request)
     except AdmissionError as error:
@@ -713,7 +734,8 @@ async def complete(body, request, chat):
             job = AsyncJob(runtime["generator"], input_ids=ids, max_new_tokens=limit,
                            min_new_tokens=limit if body.ignore_eos else body.min_tokens,
                            stop_conditions=stops, sampler=sampler, seed=body.seed,
-                           decode_special_tokens=True, **({"embeddings": embeddings} if images else {}))
+                           decode_special_tokens=True, **({"embeddings": embeddings} if images else {}),
+                           **({"filters": filters} if filters else {}))
         if observation:
             observation.phase = "enqueued"
             observation.last_progress = time.perf_counter()
@@ -816,6 +838,8 @@ async def complete(body, request, chat):
             if reason != "length" and (tool_choice == "required" or isinstance(tool_choice, dict)):
                 if not tool_splitter or not tool_splitter.calls:
                     raise ValueError("Model did not produce the requested function call")
+            if json_mode and reason != "length":
+                glm_json_output.validate_complete(collected["content"])
             if observation:
                 observation.outcome = "completed"
             if body.stream:
@@ -912,6 +936,8 @@ if __name__ == "__main__":
     parser.add_argument("--concurrent-max-sequences", type=int)
     parser.add_argument("--concurrent-fair-gen-rounds", type=int)
     parser.add_argument("--concurrent-fair-chunk-size", type=int)
+    parser.add_argument("--experimental-json-mode", action="store_true",
+                        help="Opt in to per-job JSON-object grammar after the reasoning span; requires llguidance")
     parser.add_argument("--experimental-b2-session-cache", action="store_true",
                         help="Experimental two-job paired retention; exact full384Ki TP/K7 profile only")
     parser.add_argument("--experimental-b2-shared-prefix", action="store_true",
