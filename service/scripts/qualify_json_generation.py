@@ -121,11 +121,27 @@ async def run(args, probe):
                                        'replacement': replacement, 'native_leases_after': 0}
                 save()
 
+                # Exercise the unchanged strict coding oracle directly; do not
+                # let a separate array field-name mistake hide its result.
+                code = probe.cases(32, 'mixed_json')[0]
+                code_pair = [{**code, 'id': 'code-left'}, {**code, 'id': 'code-right'}]
+                report['high_coding'] = []
+                for _ in range(3):
+                    row = await probe.wave(client, await idle(), code_pair, 'high', True)
+                    assert all(r['correct'] for r in row['requests'])
+                    report['high_coding'].append(row); save()
+
             started = time.monotonic()
             while time.monotonic()-started < args.soak_seconds:
                 index = len(report['soak'])
                 effort = ('low', 'high', 'max')[index % 3]
                 pair = probe.cases(32, 'mixed_json' if index % 2 else 'structured_json')
+                # Soak checks runtime stability and exact output copying. The
+                # separately scored counting benchmark retains its own prompt
+                # and any semantic failures; no failed output is repaired.
+                for case in pair:
+                    if 'expected' in case:
+                        case['prompt'] = 'Return exactly this JSON object, without markdown: ' + json.dumps(case['expected'])
                 before = await idle()
                 row = await probe.wave(client, before, pair, effort, True)
                 assert all(r['correct'] for r in row['requests'])
