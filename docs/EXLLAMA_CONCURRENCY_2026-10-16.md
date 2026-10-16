@@ -1,3 +1,7 @@
+> Follow-up: [JSON mode and final local qualification](JSON_ROW16_QUALIFICATION_2026-10-16.md)
+> deployed the sixteen-row variant after additional checks. The failures and
+> restored-production status below describe the original investigation window.
+
 # ExLlamaV3 concurrency investigation: October 16, 2026
 
 Status: an isolated sixteen-row candidate demonstrated a bounded throughput
