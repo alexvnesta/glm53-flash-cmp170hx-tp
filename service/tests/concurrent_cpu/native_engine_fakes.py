@@ -137,6 +137,7 @@ class Engine:
         compile_engine('exllamav3/generator/generator.py', gen, methods={'Generator': (
             'num_remaining_jobs', 'enqueue', 'iterate', 'iterate_start_jobs', 'reap_failed_job', 'recurrent_checkpoint',
             'iterate_draftmodel_dflash_gen', 'iterate_hybrid_gen', 'iterate_gen', 'cancel', 'clear_queue',
+            'idle_work', 'has_idle_work',
             'on_queue_drained', 'close', 'new_recurrent_state', 'recurrent_state_from_stashed')})
 
 

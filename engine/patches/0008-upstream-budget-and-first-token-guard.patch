@@ -1,0 +1,163 @@
+--- a/exllamav3/cache/recurrent.py
++++ b/exllamav3/cache/recurrent.py
+@@ -228,6 +228,11 @@
+         # Evict before stashing so the pool's peak occupancy is the cache limit, not the limit
+         # plus the incoming checkpoint: the evicted buffers are what the new stash reuses
+         state_size = state.checkpoint_size if state is not None else stashed["checkpoint_size"]
++        # Upstream f7c893e: a checkpoint larger than the entire budget is a cache miss,
++        # not a reason to evict every valid entry or fail the running sequence.
++        if state_size > self.max_size:
++            self.metrics["stash_skipped_budget"] = self.metrics.get("stash_skipped_budget", 0) + 1
++            return
+         while self.update_total_size() + state_size > self.max_size:
+             assert self.current_size >= 0, "Not enough space in cache for single state"
+             pt = self.pagetable
+--- a/exllamav3/generator/job.py
++++ b/exllamav3/generator/job.py
+@@ -16,12 +16,6 @@
+ from ..tokenizer import MMEmbedding
+ from functools import lru_cache
+ from ..util import profile_opt
+-import os
+-
+-# EXL3_NAN_CHECK: fail fast when a decode step produces non-finite logits, instead of sampling
+-# garbage (argmax over NaN returns token id 0, which e.g. decodes to '!' and loops). 0 = off,
+-# 1 = the job's first sampled token (default, one extra sync per job), 2 = every token
+-_nan_check_mode = {"0": 0, "1": 1, "2": 2}.get(os.environ.get("EXL3_NAN_CHECK", "1"), 1)
+ 
+ 
+ class NonFiniteLogits(RuntimeError):
+@@ -741,17 +735,16 @@
+         # assert all(seq.live for seq in self.sequences)
+ 
+         # Fail fast on NaN/Inf logits: sampling them yields a fixed garbage token (argmax over
+-        # NaN is id 0) that can loop, which hides the fault. First-token mode pays one sync per
+-        # job; every-token mode is for debugging
+-        if _nan_check_mode == 2 or (_nan_check_mode == 1 and self.new_tokens < 1):
++        # NaN is id 0) that can loop, which hides the fault. Upstream c844534 checks
++        # the first sampled token unconditionally, costing one sync per job.
++        if self.new_tokens < 1:
+             if not bool(torch.isfinite(logits).all()):
+                 n_bad = int((~torch.isfinite(logits)).sum())
+                 raise NonFiniteLogits(
+                     f"Job {self.identifier!r} (serial {self.serial_number}) produced {n_bad} non-finite "
+                     f"logits at step {self.new_tokens} (tensor {tuple(logits.shape)} on {logits.device}). "
+                     f"This is a kernel bug, not bad sampling settings. A/B the fused decode paths to "
+-                    f"bisect: EXL3_BC_MLA=0, EXL3_BC_GDN=0, EXL3_BC_ATTN=0, EXL3_BC_DSA=0, EXL3_GRAPHS=0, "
+-                    f"or disable the check with EXL3_NAN_CHECK=0."
++                    f"bisect: EXL3_BC_MLA=0, EXL3_BC_GDN=0, EXL3_BC_ATTN=0, EXL3_BC_DSA=0, EXL3_GRAPHS=0."
+                 )
+ 
+         # A pending forced token (constrain_output_now) replaces the sampler's choice; everything
+--- a/doc/env_vars.md
++++ b/doc/env_vars.md
+@@ -337,16 +337,12 @@
+ 
+ ## Sampling
+ 
+-### `EXL3_NAN_CHECK` (default: `1`)
+-
+-Fail fast when a decode step produces non-finite logits instead of sampling them. Argmax over an
+-all-NaN distribution returns token id 0 (which decodes to `'!'` in some tokenizers), so a kernel
+-that emits NaN shows up as an endless garbage-token loop rather than an error. Mode `1` checks the
+-job's first sampled token (one extra device sync per job), mode `2` checks every token (debugging;
+-one sync per token), mode `0` disables. On a hit, `NonFiniteLogits` is raised with the job, step
+-and count; it is almost always a kernel bug, so the message also lists the env toggles that A/B the
+-fused decode paths (`EXL3_BC_MLA`, `EXL3_BC_GDN`, `EXL3_BC_ATTN`, `EXL3_BC_DSA`, `EXL3_GRAPHS`) for
+-bisection. Only catches the NaN/Inf flavor; a kernel that computes wrong-but-finite values passes.
++### First-token nonfinite logit check
++
++The first sampled token (including token healing) unconditionally checks for NaN/Inf
++and raises `NonFiniteLogits` instead of sampling a repeated garbage token. This costs
++one device sync per job. The exception suggests fused-kernel toggles for bisection.
++Later tokens and wrong-but-finite results are not covered by this check.
+ 
+ ### `EXL3_FUSED_SAMPLER` (default: `1`)
+ 
+--- a/tests/generator/test_logits_finite_check.py
++++ b/tests/generator/test_logits_finite_check.py
+@@ -1,8 +1,8 @@
+ """
+-The EXL3_NAN_CHECK fail-fast in Job.receive_logits: non-finite logits at a checked step raise
++The unconditional first-token fail-fast in Job.receive_logits: non-finite logits at a checked step raise
+ NonFiniteLogits (sampling them silently yields a fixed garbage token -- argmax over NaN is id 0 --
+-that can loop and hide the fault), finite logits pass through to the sampler, and the mode
+-boundaries hold (first-token only by default, every token at 2, off at 0).
++that can loop and hide the fault), finite logits pass through to the sampler, and
++later tokens skip the check.
+ 
+ CPU-only throughout: the check is what's under test, so the sampler is stubbed with a plain
+ argmax instead of the fused CUDA one.
+@@ -13,7 +13,6 @@
+ import pytest
+ import torch
+ 
+-from exllamav3.generator import job as job_module
+ from exllamav3.generator.job import Job, NonFiniteLogits
+ from exllamav3.generator.sampler import Sampler
+ 
+@@ -55,10 +54,8 @@
+     return t
+ 
+ 
+-@pytest.mark.parametrize("mode", [1, 2])
+ @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+-def test_nonfinite_raises(mode, value, monkeypatch):
+-    monkeypatch.setattr(job_module, "_nan_check_mode", mode)
++def test_nonfinite_raises(value):
+     job = make_job(new_tokens = 0)
+     with pytest.raises(NonFiniteLogits, match = "EXL3_BC_MLA=0") as exc:
+         job.receive_logits(bad_logits(value))
+@@ -67,37 +64,19 @@
+     assert "non-finite" in str(exc.value)
+ 
+ 
+-def test_first_token_only(monkeypatch):
+-    monkeypatch.setattr(job_module, "_nan_check_mode", 1)
++def test_first_token_only():
+     job = make_job(new_tokens = 5)
+     job.receive_logits(bad_logits(float("nan")))    # later step: no raise
+ 
+ 
+-def test_every_token_mode_catches_later_steps(monkeypatch):
+-    monkeypatch.setattr(job_module, "_nan_check_mode", 2)
+-    job = make_job(new_tokens = 5)
+-    with pytest.raises(NonFiniteLogits, match = "step 5"):
+-        job.receive_logits(bad_logits(float("nan")))
+-
+-
+-def test_disabled_never_raises(monkeypatch):
+-    monkeypatch.setattr(job_module, "_nan_check_mode", 0)
+-    for step in (0, 3):
+-        job = make_job(new_tokens = step)
+-        job.receive_logits(bad_logits(float("nan")))
+-
+-
+-def test_healing_step_is_checked(monkeypatch):
++def test_healing_step_is_checked():
+     # new_tokens == -1 (token healing) counts as a first token: prefill logits are covered too
+-    monkeypatch.setattr(job_module, "_nan_check_mode", 1)
+     job = make_job(new_tokens = -1)
+     with pytest.raises(NonFiniteLogits):
+         job.receive_logits(bad_logits(float("nan")))
+ 
+ 
+-@pytest.mark.parametrize("mode", [1, 2])
+-def test_finite_logits_pass_and_sample(mode, monkeypatch):
+-    monkeypatch.setattr(job_module, "_nan_check_mode", mode)
++def test_finite_logits_pass_and_sample():
+     job = make_job(new_tokens = 0)
+     t = torch.zeros(1, 1, 128)
+     t[0, 0, 42] = 10.0
+--- a/tests/kernels/recurrent/test_recurrent_rewind_batched.py
++++ b/tests/kernels/recurrent/test_recurrent_rewind_batched.py
+@@ -123,7 +123,8 @@
+         k_head_dim = dk,
+         v_head_dim = dv,
+     )
+-    ls = GDNLayerState(module, num_slots, max_history, cache_id = 0, state_dtype = state_dtype)
++    ls = GDNLayerState(module, num_slots, max_history, cache_id = 0)
++    ls.set_state_dtype(state_dtype)
+     ls.alloc(device)
+     ls.conv_state.copy_(torch.randn(ls.conv_state.shape, device = device))
+     ls.recurrent_state.normal_()

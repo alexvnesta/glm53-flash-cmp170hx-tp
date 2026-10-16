@@ -1,0 +1,39 @@
+--- a/exllamav3/generator/disk_cache.py
++++ b/exllamav3/generator/disk_cache.py
+@@ -84,7 +84,7 @@
+     return getattr(module, "key", None) or getattr(key, "key", None)
+ 
+ 
+-def cache_fingerprint(caches: list, canonical: list[dict], image_size: int) -> tuple[str, dict]:
++def cache_fingerprint(caches: list, canonical: list[dict], image_size: int, extra_identity: dict | None = None) -> tuple[str, dict]:
+     """(fingerprint, its inputs in clear) for page images in the canonical layout `canonical` (one entry per
+     cache tensor: rows, row bytes, dtype, image offset), which does not depend on a tensor-parallel split"""
+     parts = {
+@@ -110,6 +110,10 @@
+             ],
+         }
+         parts["caches"].append(c)
++    # Runtime interventions can alter K/V without changing the checkpoint files.
++    # Keep every profile in the same disk budget, but never share its page namespace.
++    if extra_identity is not None:
++        parts["extra_identity"] = extra_identity
+     text = json.dumps(parts, sort_keys = True)
+     return hashlib.blake2b(text.encode(), digest_size = 16).hexdigest(), parts
+ 
+@@ -209,6 +213,7 @@
+         fingerprint: str | None = None,
+         min_state_distance: int = 4096,
+         min_free: int | None = None,
++        extra_identity: dict | None = None,
+     ):
+         """
+         :param root_dir:
+@@ -289,7 +294,7 @@
+         assert self.image_size, "No paged cache layers to attach the disk cache tier to"
+ 
+         if fingerprint is None:
+-            self.fingerprint, parts = cache_fingerprint(caches, canonical, self.image_size)
++            self.fingerprint, parts = cache_fingerprint(caches, canonical, self.image_size, extra_identity)
+         else:
+             self.fingerprint, parts = fingerprint, {"override": fingerprint}
+         self.dir = os.path.join(root_dir, self.fingerprint[:16])

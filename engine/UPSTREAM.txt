@@ -2,9 +2,8 @@
 upstream_url: https://github.com/turboderp-org/exllamav3
 base_commit: 0f685aa9fda3a98a864149b367b7ef570257572e
 
-# base_commit is upstream origin/dev on 2026-10-12 ("GDN/Mamba: Fix 4-way split in batched_scan_replay ..."), the same
-# base as the stage-1 port (../../../port/engine/UPSTREAM.txt). The stage-2 series is the stage-1 series unchanged
-# (patches 0001-0003, byte-identical copies of ../../../port/engine/patches) plus 0004, the U1 fix (SWAState
-# stash/unstash index the draft window ring by its fill; stage2/DESIGN.md section A3). Of the 968 files of the stage-2
-# tree, 954 have this commit's content and 14 are changed or added by patches/ (4 patches). License of the upstream
-# code: MIT, Copyright (c) turboderp. See ../../../port/engine/NOTES.md.
+# base_commit is upstream origin/dev on 2026-10-12 ("GDN/Mamba: Fix 4-way split in batched_scan_replay ...").
+# Patches 0001-0004 retain the original P16 stage-2 recipe. Patches 0005-0009 selectively add upstream
+# FP16 recurrent storage, allocation recovery, nonfinite/budget guards and profile-aware disk identity.
+# The baseline manifest covers 970 files. This is not a complete v1.6.2/dev upgrade.
+# See NOTES.md for source commits and adaptations. Upstream code is MIT, Copyright (c) turboderp.

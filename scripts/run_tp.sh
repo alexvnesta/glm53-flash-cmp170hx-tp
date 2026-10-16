@@ -8,6 +8,8 @@ MODELS_DIR="${MODELS_DIR:-$ROOT/models}"
 HOST="${HOST:-127.0.0.1}"; PORT="${PORT:-8012}"
 VISION="${VISION:-1}"; HYBRID_DRAFT_TOKENS="${HYBRID_DRAFT_TOKENS:-15}"; RAM_TIER_GIB="${RAM_TIER_GIB:-8}"
 TP_BACKEND="${TP_BACKEND:-nccl}"   # nccl = GPU P2P all-reduce (+4-6 % decode, +10 % prefill here); native = through host RAM
+RECURRENT_STATE_DTYPE="${RECURRENT_STATE_DTYPE:-fp32}"
+case "$RECURRENT_STATE_DTYPE" in fp16|fp32) ;; *) echo "RECURRENT_STATE_DTYPE must be fp16 or fp32" >&2; exit 2 ;; esac
 ENGINE_SRC="${GLM53_ENGINE_SRC:-$ROOT/engine-src}"
 NATIVE_DIR="${GLM53_NATIVE_DIR:-$ROOT/native}"
 for f in "$ENGINE_SRC/exllamav3/__init__.py" "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw/config.json" \
@@ -38,6 +40,11 @@ ARGS=(-m "$MODELS_DIR/GLM-5.3-Flash-exl3-3.05bpw" -dm "$MODELS_DIR/GLM-5.3-Flash
   --host "$HOST" --port "$PORT"
   --experimental-b2-session-cache --b2-target-cpu-cache-gib "$RAM_TIER_GIB" --recurrent-cache-gib 5
   --experimental-b2-shared-prefix)
+[ "$RECURRENT_STATE_DTYPE" != fp32 ] || ARGS+=(--recurrent_state_fp32)
+if [ -n "${GLM_PERSISTENT_CACHE_DIR:-}" ]; then
+  ARGS+=(--disk_cache_dir "$GLM_PERSISTENT_CACHE_DIR" --disk_cache_size "${GLM_PERSISTENT_CACHE_GIB:-50}"
+    --persistent-cache-min-free-gib "${GLM_PERSISTENT_CACHE_MIN_FREE_GIB:-16}")
+fi
 if [ "$VISION" = 1 ]; then
   SANDBOX=bwrap; command -v bwrap >/dev/null || { echo "vision requires bubblewrap (bwrap); install it or set VISION=0" >&2; exit 1; }
   ARGS+=(--experimental-vision --vision-decode-sandbox "$SANDBOX" --vision-max-image-tokens 6144 --vision-cache-mib 4096

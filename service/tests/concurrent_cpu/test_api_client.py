@@ -25,7 +25,12 @@ class APISource(unittest.TestCase):
         self.assertIn('max_batch_size=concurrency.max_sequences',text)
     def test_per_response_cleanup_releases_owned_capacity_after_cancel(self):
         s=(ROOT/'glm/glm_api.py').read_text()
-        self.assertIn('OwnedJobCleanup(job.cancel, lock.release)',s)
+        tree=ast.parse(s)
+        callback=next(n for n in ast.walk(tree) if isinstance(n,ast.AsyncFunctionDef) and n.name=='cancel_and_report')
+        self.assertTrue(any(isinstance(n,ast.Await) and isinstance(n.value,ast.Call)
+                            and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='cancel'
+                            for n in ast.walk(callback)))
+        self.assertIn('OwnedJobCleanup(cancel_and_report, lock.release)',s)
         self.assertIn('await runtime["admission"].acquire(lock, request)',s)
         self.assertIn('OwnedStreamingResponse',s)
         self.assertIn('getattr(generator, "fair_gen_rounds", 1)',s)

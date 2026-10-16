@@ -107,7 +107,10 @@ limited cells and effort application are explicit in the report.
 | `PORT`, `HOST` | `8012`, `127.0.0.1` | where the API listens. There is **no authentication**: keep it on localhost or put a proxy with auth in front |
 | `VISION` | `1` | `0` turns image input off and frees the vision tower's memory on GPU 0 |
 | `HYBRID_DRAFT_TOKENS` | `15` | `0` turns hybrid drafting off (15 tested faster than 8) |
-| `RAM_TIER_GIB` | `8` | system RAM for parked sessions |
+| `RAM_TIER_GIB` | `8` | system RAM for parked sessions; persistence uses upstream's fixed pinned arenas within this ceiling |
+| `RECURRENT_STATE_DTYPE` | `fp32` | target recurrent-state storage; the Weightless launcher defaults to `fp16` |
+| `GLM_PERSISTENT_CACHE_DIR` | unset | enables upstream disk prefix/checkpoint caching behind the B2 RAM tier |
+| `GLM_PERSISTENT_CACHE_GIB` | `50` | disk cache ceiling across profiles sharing that root; keeps 16 GiB free by default |
 | `MODELS_DIR` | `./models` | where the weights live |
 | `TRITON_CACHE_DIR` | Triton default | optional cache directory; measurements used pinned host FLA choices, described in [engine notes](engine/NOTES.md) |
 | `TP_BACKEND` | `nccl` | tensor-parallel backend: `nccl` reduces GPU-to-GPU over P2P (+4-6 % decode, +10 % prefill here); `native` goes through system RAM. Run `scripts/p2p_check.py` first; if it fails, use `native` |
@@ -134,7 +137,7 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Roadmap
 
-- **Engine rebase:** the qualified recipe pins upstream dev `0f685aa9fd` and uses native SWA draft state. See [engine/NOTES.md](engine/NOTES.md) for retained patches and source reproduction.
+- **Engine:** pins upstream dev `0f685aa9fd` with selected upstream recurrent-state/recovery backports and the original four P16 patches. See [engine/NOTES.md](engine/NOTES.md) for source reproduction and [cache/metrics notes](docs/CACHE_AND_OBSERVABILITY.md) for the optional persistent profile.
 
 - **Done (2026-10-12): NCCL over GPU P2P.** A content check (peer copies and NCCL all-reduce against a CPU reference) passed on our
   cards, NCCL picked the P2P/CUMEM transport, and an A/B on this build measured +4.4 / +6.5 % decode and +10 % prefill with no memory cost.
@@ -156,7 +159,7 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 |---|---|
 | Model | [turboderp/GLM-5.3-Flash-exl3](https://huggingface.co/turboderp/GLM-5.3-Flash-exl3), 3.05 bpw (rev `332ab457`), ~116.6 GiB |
 | Drafter | [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2) (rev `bf582e4e`), converted locally to EXL3 6 bpw, 7 draft tokens |
-| Engine | ExLlamaV3 at `0f685aa9fd` + [4 patches](engine/NOTES.md): cache ring, fair scheduling, image draft-id guard and SWA checkpoint fix. TP DFlash2, hybrid drafting and recurrent paired states use upstream implementations |
+| Engine | ExLlamaV3 at `0f685aa9fd` + [9 patches](engine/NOTES.md): the four P16 patches, selected upstream FP16/recovery/logit checks, and persistent-cache profile identity. TP DFlash2, hybrid drafting and recurrent paired states use upstream implementations |
 | Server | [service/](service): Flun's server plus TP serving, two-session scheduler, prefix cache, RAM tier, vision, hybrid drafting |
 | TP backend | NCCL 2.30.7 over GPU P2P (transport P2P/CUMEM); `native` (host-RAM all-reduce) as fallback |
 | Target KV cache | Q8, 655,360-token shared pool |
