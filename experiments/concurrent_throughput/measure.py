@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+import subprocess
 import time
 
 import httpx
@@ -160,8 +161,9 @@ async def stream(client, case, effort, owned):
             result["correct"] = finished == "stop" and await asyncio.to_thread(validate, result["answer"])
         else:
             result["correct"] = finished == "stop" and json.loads(result["answer"]) == case["expected"]
-    except (ValueError, SyntaxError, OSError, TimeoutError):
+    except (ValueError, SyntaxError, OSError, TimeoutError, subprocess.TimeoutExpired) as error:
         result["correct"] = False
+        result["validation_error"] = failure_details(error)
     if not result["correct"]:
         raise ProbeResponseFailure("Known-answer failure: " + case["id"], result)
     if not usage or not isinstance(usage.get("completion_tokens"), int):

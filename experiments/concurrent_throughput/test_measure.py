@@ -3,6 +3,7 @@ import copy
 import json
 import unittest
 import time
+import subprocess
 from unittest.mock import patch
 
 import httpx
@@ -105,6 +106,17 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(caught.exception.response["correct"])
         with self.assertRaises(ValueError):
             await self.client_response(json.dumps(list(range(100, 116))), usage=False)
+
+    async def test_oracle_timeout_keeps_answer_and_distinguishes_validation_error(self):
+        answer = '{"code":"def compress_runs(values): return []"}'
+        case = {"id": "code", "validator": "code", "prompt": "fixture"}
+        with patch.object(measure, "cases", return_value=[case]), patch(
+                "code_oracle.validate", side_effect=subprocess.TimeoutExpired("oracle", 3)):
+            with self.assertRaises(measure.ProbeResponseFailure) as caught:
+                await self.client_response(answer)
+        saved = caught.exception.response
+        self.assertEqual(saved["answer"], answer)
+        self.assertEqual(saved["validation_error"]["type"], "TimeoutExpired")
 
     async def test_waiting_client_cancels_every_probe_stream(self):
         started, cancelled = [], []
