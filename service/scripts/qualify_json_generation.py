@@ -74,9 +74,13 @@ async def run(args, probe):
                 states = [{}, {}]
                 visible = [asyncio.Event(), asyncio.Event()]
 
-                async def holder(index, start):
-                    body = request(f'Return only a JSON object with key values containing all integers from {start} '
-                                   f'through {start+255}, inclusive, in order.', stream=True,
+                # Reuse the explicit array wording of the matched fixture. The
+                # earlier custom "key values" wording elicited numbered keys
+                # on control8; retain that receipt as a semantic failure.
+                lifecycle_pair = probe.cases(256, 'structured_json')
+
+                async def holder(index):
+                    body = request(lifecycle_pair[index]['prompt'], stream=True,
                                    max_tokens=4096,
                                    stream_options={'include_usage': True})
                     state = states[index]; state.update(content='', finish_reason=None)
@@ -94,7 +98,7 @@ async def run(args, probe):
                                 if choice.get('finish_reason'): state['finish_reason'] = choice['finish_reason']
 
                 before = await idle()
-                tasks = [asyncio.create_task(holder(0, 1)), asyncio.create_task(holder(1, 1001))]
+                tasks = [asyncio.create_task(holder(0)), asyncio.create_task(holder(1))]
                 try:
                     await asyncio.wait_for(asyncio.gather(*(e.wait() for e in visible)), 45)
                     tasks[0].cancel()
@@ -108,7 +112,7 @@ async def run(args, probe):
                     report['lifecycle_partial'] = states
                     save()
                 assert states[1]['finish_reason'] == 'stop' and states[1].get('usage'), states[1]
-                assert json.loads(states[1]['content']) == {'values': list(range(1001, 1257))}
+                assert json.loads(states[1]['content']) == lifecycle_pair[1]['expected']
                 after = await idle()
                 retired = [r for r in after['request_metrics']['recent'] if r['id'] == states[0]['id']]
                 assert len(retired) == 1 and retired[0]['outcome'] in ('cancelled', 'disconnected'), retired
