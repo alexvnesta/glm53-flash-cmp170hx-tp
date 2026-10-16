@@ -30,6 +30,12 @@ per agent. It improves concurrent throughput by 1.8–3.8% over the qualified
 16-row variant. The report separates effort, elapsed time, cache hits and
 actual per-agent rates; four submitting agents still share two active slots.
 
+The [MoE and communication follow-up](docs/MOE_COMMUNICATION_2026-10-16.md)
+retains that production profile. Global MoE overrides failed the screening,
+and moving broadcasts above 2 KiB to NCCL regressed low-effort concurrent
+delivery by 11.5–12.9%, with no consistent high-effort gain. The report includes
+matched aggregate/per-agent token rates, elapsed time and all 384 scored tasks.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |
