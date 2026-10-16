@@ -21,6 +21,15 @@ def snapshot():
 
 
 class GuardTests(unittest.TestCase):
+    def test_four_slots_require_explicit_capacity_and_keep_idle_guards(self):
+        h = snapshot(); h['max_active_sequences'] = 4
+        with self.assertRaises(RuntimeError): measure.require_idle(h)
+        measure.require_idle(h, 4)
+        h['busy'] = True
+        with self.assertRaises(RuntimeError): measure.require_idle(h, 4)
+        for n in (True, 3, 8):
+            with self.assertRaises(ValueError): measure.require_idle(snapshot(), n)
+
     def test_explicit_json_cohort_is_separate_and_legacy_fixture_is_unchanged(self):
         legacy = measure.cases(16, "mixed")
         fixed = measure.cases(16, "mixed_json")

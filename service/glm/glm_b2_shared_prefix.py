@@ -112,7 +112,7 @@ class Boundary:
 
 
 class B2SharedPrefix:
-    """Two bounded admission tickets; boundary records name native paired checkpoints and own no state tensors."""
+    """Bounded admission tickets; boundary records name native paired checkpoints and own no state tensors."""
     def __init__(self, coordinator, token_cap, template, tokenizer, renderer):
         from glm_b2_options import B2_NATIVE_CHECKPOINT_BYTES
         native=coordinator.native
@@ -162,8 +162,8 @@ class B2SharedPrefix:
         if scope is None or scope[0] is None:return
         if scope[1] is not None or job in self.tickets or job in self.owner.jobs:
             raise ValueError('A shared API ticket can bind exactly one fresh job')
-        if len(self.tickets)+len(self.owner.jobs)>=2 or len(job.sequences)!=1:
-            raise ValueError('Only two shared pending/active job admissions')
+        if len(self.tickets)+len(self.owner.jobs)>=self.owner.slots or len(job.sequences)!=1:
+            raise ValueError('Shared pending/active admissions exceed the owned sequence capacity')
         ticket=scope[0]
         if not torch.equal(job.sequences[0].input_ids.torch(),ticket.tokens):
             raise ValueError('Constructed native job differs from same API token tensor')

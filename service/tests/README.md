@@ -26,3 +26,10 @@ without downloading model weights or building a GPU extension.
 fixture record used by provenance tests. Its 64K failure and bounded scope stay
 visible. It is not the qualification record for the current native-SWA,
 two-active profile; use the root recipe's dated qualification documentation.
+
+The October 16 four-slot experiment adds independent state/reuse, fifth-job
+rejection, capacity-drift and shared-prefix admission cases. Its exact row32
+CPU run executes 68 contracts with one native-only SAM skip and leaves CUDA
+uninitialized. See the root recipe's `docs/FOUR_ACTIVE_2026-10-16.md` for the
+separate GPU benchmark and bounded lifecycle evidence; four-slot production
+soak, long-context and cache-restart qualification remain outstanding.

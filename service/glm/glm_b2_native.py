@@ -1,9 +1,9 @@
-"""B2 two-job retention as a thin layer over upstream's native PairedState checkpoints (P16 stage 2).
+"""Paired retention over upstream's native PairedState checkpoints (P16 stage 2).
 
 Upstream checkpoints a job's target (KDA) state and its drafter's sliding-window state together, as one
 PairedState stash under one page hash in one LRU RecurrentCache, and restores the deepest usable pair inside
 Job.allocate_pages. Draft custody, the checkpoint budget and eviction are native. This layer keeps the service
-policy only: two-job admission records, the terminal latch, the shared system/tools boundary (glm_b2_shared_prefix)
+policy only: bounded admission records, the terminal latch, the shared system/tools boundary (glm_b2_shared_prefix)
 and the batched target RAM tier (glm_b2_cpu_cache). It installs no hooks (glm_native_concurrency does) and owns no
 tensors. It replaces glm_b2_retention_foundation and glm_b2_retention_coordinator (stage 1).
 """
@@ -65,7 +65,7 @@ class B2Retention:
         concurrency.check_owner()
         g = concurrency.generator
         native = g.recurrent_cache
-        if (concurrency.slots != 2 or concurrency._paired_owner is not None
+        if (concurrency.slots not in (2,4) or concurrency._paired_owner is not None
                 or g.num_remaining_jobs() or getattr(g, 'job_serial', 0)
                 or getattr(g, '_glm_b2_retention', None) is not None
                 or g.cpu_page_cache is not None or g.pagetable.cpu_tier is not None
@@ -73,8 +73,9 @@ class B2Retention:
                 or native is None or len(native) or getattr(native, 'model', None) is not g.model
                 or getattr(native, 'pagetable', None) is not g.pagetable
                 or getattr(native, 'disk_tier', None) is not None or not g.draft_recurrent):
-            raise ValueError('B2 native retention requires a fresh owned two-slot native SWA generator')
+            raise ValueError('B2 native retention requires a fresh owned two- or four-slot native SWA generator')
         self.concurrency = concurrency
+        self.slots = concurrency.slots
         self.generator = g
         self.native = native
         self.namespace = namespace or uuid.uuid4().hex
@@ -114,7 +115,8 @@ class B2Retention:
             # An ordinary proof failure must bypass per-job containment.
             # Existing terminal and deadline/cancellation BaseExceptions pass.
             self._terminal(error)
-        if (self.generator.recurrent_cache is not self.native
+        if (self.concurrency.slots != self.slots
+                or self.generator.recurrent_cache is not self.native
                 or (not self.closing and getattr(self.generator, 'disk_page_cache', None) is not self.disk)
                 or (not self.closing and getattr(self.native, 'disk_tier', None) is not self.disk)
                 or (self.attached and getattr(self.generator, '_glm_b2_retention', None) is not self)):
@@ -148,8 +150,9 @@ class B2Retention:
     def prepare(self, job):
         """After native hashing and the concurrency admission, before the job joins pending_jobs."""
         self.check_owner()
-        if job in self.jobs or len(self.jobs) >= 2:
-            raise ValueError('B2 paired retention admits two distinct jobs')
+        if job in self.jobs or len(self.jobs) >= self.slots:
+            count = 'two' if self.slots == 2 else 'four'
+            raise ValueError(f'B2 paired retention admits {count} distinct jobs')
         record = JobRecord(job)
         self.jobs[job] = record
         if self.shared is not None:

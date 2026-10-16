@@ -102,7 +102,9 @@ def compact(snapshot, owned):
     }
 
 
-def require_idle(snapshot):
+def require_idle(snapshot, expected_sequences=2):
+    if type(expected_sequences) is not int or expected_sequences not in (2, 4):
+        raise ValueError("This bounded probe supports explicit two- or four-slot trials")
     if not all(identity(snapshot)[key] for key in ("native_sha256", "profile_digest")):
         raise RuntimeError("Serving identity unavailable; probe refused")
     if snapshot.get("status") != "ok" or snapshot.get("busy") is not False:
@@ -116,8 +118,8 @@ def require_idle(snapshot):
         raise RuntimeError("Other requests are waiting; probe yields")
     if snapshot.get("switcher", {}).get("inflight", 0):
         raise RuntimeError("Router has inflight requests; probe yields")
-    if snapshot.get("max_active_sequences") != 2:
-        raise RuntimeError("This bounded probe requires the qualified two-slot profile")
+    if snapshot.get("max_active_sequences") != expected_sequences:
+        raise RuntimeError(f"This bounded probe requires the requested {expected_sequences}-slot profile")
 
 
 async def stream(client, case, effort, owned):
