@@ -1,0 +1,129 @@
+{
+  "scope": "Bounded two-request structured and mixed coding/structured tasks, two repeats per effort, current production profile only",
+  "measurements": [
+    {
+      "workload": "structured",
+      "effort": "low",
+      "repeats": 2,
+      "serial_mean_s": 3.4169623744674027,
+      "concurrent_mean_s": 3.6774565415107645,
+      "serial_completion_tokens": [
+        385,
+        385
+      ],
+      "concurrent_completion_tokens": [
+        385,
+        385
+      ],
+      "all_correct": true,
+      "cache_hits_tokens": 0,
+      "real_batch2_all_repeats": true,
+      "batch_speedup": 0.9291645831560674
+    },
+    {
+      "workload": "structured",
+      "effort": "high",
+      "repeats": 2,
+      "serial_mean_s": 4.269707478990313,
+      "concurrent_mean_s": 4.41740433301311,
+      "serial_completion_tokens": [
+        465,
+        465
+      ],
+      "concurrent_completion_tokens": [
+        465,
+        465
+      ],
+      "all_correct": true,
+      "cache_hits_tokens": 0,
+      "real_batch2_all_repeats": true,
+      "batch_speedup": 0.9665647871717341
+    },
+    {
+      "workload": "mixed",
+      "effort": "high",
+      "repeats": 2,
+      "serial_mean_s": 4.061594715516549,
+      "concurrent_mean_s": 4.920005712512648,
+      "serial_completion_tokens": [
+        366,
+        366
+      ],
+      "concurrent_completion_tokens": [
+        395,
+        395
+      ],
+      "all_correct": true,
+      "cache_hits_tokens": 0,
+      "real_batch2_all_repeats": true,
+      "batch_speedup": 0.8255264227004915
+    },
+    {
+      "workload": "mixed",
+      "effort": "low",
+      "repeats": 2,
+      "serial_mean_s": 3.524110838508932,
+      "concurrent_mean_s": 3.6964934110001195,
+      "serial_completion_tokens": [
+        344,
+        344
+      ],
+      "concurrent_completion_tokens": [
+        345,
+        344
+      ],
+      "all_correct": true,
+      "cache_hits_tokens": 0,
+      "real_batch2_all_repeats": true,
+      "batch_speedup": 0.9533659191767508
+    }
+  ],
+  "production_identity": {
+    "native_sha256": "ee120e00c9c938c7387f51936a7ea5547557f4c9e4a386e37370f5dbb02d4c42",
+    "profile_digest": "6a647e6e312ec005625ea35d4549bf1a88ad06b2b3a3771715a35be80a750471",
+    "weightless": {
+      "enabled": true,
+      "mode": "project",
+      "alpha": 2.0,
+      "layers": 44,
+      "width": 16384,
+      "vector_sha256": "0ccce6b748f87da81505ff2bc3ca82429110940b6c0def60063d304785ccc00c",
+      "base_revision": "3f1971b7b5f7a528c9c4ef6212c8785298a8c24a",
+      "numerics_verified_devices": [
+        "cuda:0",
+        "cuda:1"
+      ]
+    },
+    "cache_tokens": 655360,
+    "max_active_sequences": 2,
+    "draft_num_tokens": 7,
+    "hybrid_drafting": {
+      "hybrid_draft_tokens": 15,
+      "hybrid_rounds": 5,
+      "implementation": "engine"
+    }
+  },
+  "candidate": {
+    "compiled": true,
+    "gpu_visible": false,
+    "gpu_tests_run": false,
+    "base_native_sha256": "ee120e00c9c938c7387f51936a7ea5547557f4c9e4a386e37370f5dbb02d4c42",
+    "native_sha256": "6f29d6fec981e09825fe1be463ca0f2effa4e32df24ce2108a7532e3bfb52649",
+    "rebuilt_objects": [
+      "exllamav3/exllamav3_ext/bindings.o",
+      "exllamav3/exllamav3_ext/libtorch/blocksparse_mlp.o",
+      "exllamav3/exllamav3_ext/libtorch/mlp.o"
+    ],
+    "reused_objects": 188,
+    "seconds": 152.34754337300546,
+    "deployment": "not_launched; exclusive GPU window pending"
+  },
+  "verification": {
+    "new_cpu_tests": 13,
+    "new_cpu_tests_passed_linux": 13,
+    "concurrent_cpu_tests_run": 63,
+    "concurrent_cpu_tests_passed": 62,
+    "concurrent_cpu_existing_skip": 1,
+    "cuda_initialized": false
+  }
+}

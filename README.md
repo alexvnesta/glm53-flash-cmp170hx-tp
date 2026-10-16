@@ -138,6 +138,11 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Roadmap
 
+- **Concurrency investigation:** the [October 16 matched measurements](docs/EXLLAMA_CONCURRENCY_2026-10-16.md)
+  confirm batch-2 execution but show no throughput gain on the bounded tasks.
+  An isolated sixteen-row fused-decode variant has compiled; GPU qualification
+  and deployment remain pending.
+
 - **Engine:** pins upstream dev `0f685aa9fd` with selected upstream recurrent-state/recovery backports and the original four P16 patches. See [engine/NOTES.md](engine/NOTES.md) for source reproduction and [cache/metrics notes](docs/CACHE_AND_OBSERVABILITY.md) for the optional persistent profile.
 
 - **Done (2026-10-12): NCCL over GPU P2P.** A content check (peer copies and NCCL all-reduce against a CPU reference) passed on our
