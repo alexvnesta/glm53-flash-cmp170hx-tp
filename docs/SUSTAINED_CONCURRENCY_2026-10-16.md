@@ -1,6 +1,8 @@
 # Sustained ExLlamaV3 traffic on two CMP170HX cards
 
-> Matched benchmarks are complete. The guarded production canary is in progress.
+Status: **qualified on the stated fixtures and deployed on the local host**,
+October 16, 2026 at 13:55 UTC. The guarded canary and restart recovery passed;
+the qualified row16 deployment remains the immediate rollback.
 
 This follow-up measures immediate request backfill rather than isolated pairs.
 The model remains GLM-5.3-Flash EXL3 with Weightless alpha 2, TP2, DFlash2 K7,
@@ -173,6 +175,33 @@ Weightless alpha 2 on both devices, vision on GPU0 and the existing API.
 These short synthetic measurements do not qualify a new near-limit context
 pressure scenario or represent a long-running real multi-agent workflow.
 
+The first canary attempt automatically rolled back after seven successful
+HTTP checks because the CPU tokenizer helper imported an older native
+extension without `decode_max_rows`. The serving process had the correct
+row32 SHA. The retry explicitly inherited the candidate launch environment;
+a CPU-only import confirmed capacity 32 with CUDA uninitialized, and all 31
+tool/vision/arithmetic/cold-tail checks then passed. Failed-attempt records
+and the verified row16 restoration remain retained. This was a qualification
+launcher error, not a failed inference or a performance sample.
+
+The accepted canary completed **148 requests in 301.1 seconds** with no
+backend errors or stalls. Sixty-two pairs passed both task oracles; twelve
+pairs retained a failed max-effort `compress_runs` request that reached the
+unchanged 768-token test budget. All requests terminated normally. These
+remain failed task scores, not successful coding results. The throughput
+table uses its separate low/high cohort, where all 384 tasks passed.
+
+After an intentional production restart, the cache probe restored **4,864
+tokens**, read persisted recurrent state and returned the exact expected JSON
+object. Independent inspection verified healthy/idle GLM, zero native leases,
+zero service crash restarts, exact source/native identities, only this unit's
+processes on the GPUs, and Qwen inactive.
+
+The new local override is `64-row32-sustained.conf`. Removing only that override
+in a coordinated idle window, reloading user systemd and restarting the unit
+restores the preserved `63-json-row16.conf` deployment. Its earlier cache and
+native artifacts are retained. No task-owned diagnostic server remains active.
+
 ## Reproduction
 
 Use an already qualified row16 profile with its complete manifest, native
@@ -200,6 +229,10 @@ python experiments/concurrent_throughput/gpu_oracles.py \
 Preparation refuses source drift. GPU qualification additionally refuses
 existing model owners or an unexpected native identity. Copy the qualified service and construct an
 isolated private launch plan with `prepare_server.py`; it does not start it.
+CPU tokenizer helpers must also receive the candidate native/engine import
+paths from that plan. Disabling CUDA alone does not select the matching native
+extension. Verify `decode_max_rows == 32` and CUDA remains uninitialized before
+running those helpers alongside the server.
 After the operator starts the test profile on a separate loopback port:
 
 ```sh

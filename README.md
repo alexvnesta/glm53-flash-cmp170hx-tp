@@ -23,6 +23,13 @@ the local host at strength 2 across layers 1–44; see the
 launcher remains unsteered, and the performance tables below describe the
 earlier unsteered P16 measurements.
 
+The [latest sustained-traffic measurements](docs/SUSTAINED_CONCURRENCY_2026-10-16.md)
+cover the local 32-row variant: high-effort aggregate delivery rose from
+111.1 tok/s with one agent to 125.4 with two, delivering 65.8 and 59.6 tok/s
+per agent. It improves concurrent throughput by 1.8–3.8% over the qualified
+16-row variant. The report separates effort, elapsed time, cache hits and
+actual per-agent rates; four submitting agents still share two active slots.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |
@@ -141,15 +148,15 @@ system RAM; the qualified long-session restores took 3.8–4.0 seconds.
 
 ## Roadmap
 
-- **Concurrency:** the [October 16 qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md)
-  deployed a sixteen-row fused-decode variant on the local host. Structured
-  aggregate throughput rose from 115.8 to 133.0 tok/s at low effort and 111.9
-  to 133.6 tok/s at high when moving from one active request to two. Explicit
-  JSON-object generation passed the high-effort code checks. Runtime soak,
-  restart recovery, failed semantic cells and max-effort token limits are
-  reported separately. The earlier
-  [investigation](docs/EXLLAMA_CONCURRENCY_2026-10-16.md) retains the original
-  prompt-only formatting failures. The general launcher remains unchanged.
+- **Concurrency:** the [sustained-traffic follow-up](docs/SUSTAINED_CONCURRENCY_2026-10-16.md)
+  profiles mixed request backfill, expands fused decode to 32 rows and reports
+  aggregate/per-agent tok/s at one, two and four submitting agents. The
+  [earlier JSON qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md)
+  records the sixteen-row deployment, isolated-pair speeds and JSON contract.
+  Runtime soak, restart recovery, failed semantic cells and max-effort token
+  limits remain explicit. The original
+  [investigation](docs/EXLLAMA_CONCURRENCY_2026-10-16.md) retains the prompt-only
+  formatting failures. The general launcher remains unchanged.
 
 - **Engine:** pins upstream dev `0f685aa9fd` with selected upstream recurrent-state/recovery backports and the original four P16 patches. See [engine/NOTES.md](engine/NOTES.md) for source reproduction and [cache/metrics notes](docs/CACHE_AND_OBSERVABILITY.md) for the optional persistent profile.
 
