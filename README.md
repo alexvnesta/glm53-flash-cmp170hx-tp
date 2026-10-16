@@ -42,6 +42,11 @@ produced no consistent serving gain; deeper prefetch crossed a register
 occupancy threshold and slowed kernel timings. Production retains row32.
 The report includes matched aggregate/per-agent tok/s and hardware counters.
 
+The [instruction-decoder follow-up](docs/DECODE_INSTRUCTIONS_2026-10-16.md)
+tests procedural byte sums and a fixed-codebook lookup while preserving the
+64-register block-residency limit. It includes the unchanged serving benchmark,
+actual per-agent rates, exhaustive codebook checks and cache/occupancy evidence.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |
