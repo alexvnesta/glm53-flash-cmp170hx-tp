@@ -1,5 +1,7 @@
 # JSON-object mode and sixteen-row decode qualification
 
+> Follow-up: [sustained traffic profiling and the 32-row variant](SUSTAINED_CONCURRENCY_2026-10-16.md).
+
 Status: **qualified and deployed on the local two-card host**, October 16,
 2026, at 12:45 UTC. The sixteen-row binary and opt-in JSON-object capability
 are active. Original unit files and the previous profile remain available for

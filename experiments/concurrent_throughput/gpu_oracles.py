@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--engine", type=Path, required=True)
     parser.add_argument("--native", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument('--decode-max-rows', type=int, choices=(16,32), default=16)
     parser.add_argument("--exclusive-window", action="store_true", required=True)
     args = parser.parse_args()
     verify(args.engine, args.engine.parent / "engine.sha256")
@@ -64,8 +65,8 @@ def main():
     import torch
     import exllamav3_ext as ext
 
-    if ext.decode_max_rows != 16:
-        raise RuntimeError("Expected the attested 16-row extension")
+    if ext.decode_max_rows != args.decode_max_rows:
+        raise RuntimeError("Native decode capacity differs from the requested oracle")
     if torch.cuda.device_count() != 2:
         raise RuntimeError("Expected exclusive access to two CMP GPUs")
     path = args.engine / "tests/kernels/moe/test_moe_coop.py"
@@ -81,17 +82,23 @@ def main():
             device = torch.device(f"cuda:{index}")
             if torch.cuda.get_device_capability(device) != (8, 0):
                 raise RuntimeError("Expected SM80")
-            for rows in (1, 2, 4, 7, 8, 9, 16):
+            for rows in (1, 2, 4, 7, 8, 9, 16) + ((17,24,31,32) if args.decode_max_rows==32 else ()):
                 run_case(device, 20261016 + rows, 3, 3, 3, 2,
                          bsz=rows, limit=10.0, gu_f32=True)
                 receipt["cases"].append({"device": index, "rows": rows, "shape": [256, 256], "passed": True})
-            for rows in (9, 16):
+            for rows in (9, 16) + ((17,32) if args.decode_max_rows==32 else ()):
                 run_case(device, 20261016 + rows, 3, 3, 3, 2,
                          bsz=rows, limit=10.0, gu_f32=True,
                          H=4096, Hi=4096, I=2048, Ho=4096, H_out=4096,
                          E=8, topk=8, min_e=1, max_e=9, empty_rows=True)
                 receipt["cases"].append({"device": index, "rows": rows, "shape": [4096, 2048],
                                          "expert_range_masking": True, "passed": True})
+            if args.decode_max_rows==32:
+                for rows in (16,32):
+                    run_case(device, 20261016+rows, 5, 5, 5, 2,
+                             bsz=rows, limit=10.0, gu_f32=True)
+                    receipt['cases'].append({'device':index,'rows':rows,'shape':[256,256],
+                                             'bits':5,'passed':True})
         receipt["passed"] = True
     finally:
         args.output.write_text(json.dumps(receipt, indent=2) + "\n")
