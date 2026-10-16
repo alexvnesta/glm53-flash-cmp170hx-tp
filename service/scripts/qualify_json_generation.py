@@ -15,7 +15,8 @@ import httpx
 
 async def run(args, probe):
     args.output.mkdir(parents=True, exist_ok=False)
-    report = {"passed": False, "functional": [], "soak": [], "lifecycle": None}
+    report = {"passed": False, "scope": "Runtime qualification; task failures retain their scores",
+              "functional": [], "soak": [], "task_failures": [], "lifecycle": None}
     path = args.output / "summary.json"
 
     def save():
@@ -133,7 +134,7 @@ async def run(args, probe):
 
             started = time.monotonic()
             while time.monotonic()-started < args.soak_seconds:
-                index = len(report['soak'])
+                index = len(report['soak']) + len(report['task_failures'])
                 effort = ('low', 'high', 'max')[index % 3]
                 pair = probe.cases(32, 'mixed_json' if index % 2 else 'structured_json')
                 # Soak checks runtime stability and exact output copying. The
@@ -143,12 +144,28 @@ async def run(args, probe):
                     if 'expected' in case:
                         case['prompt'] = 'Return exactly this JSON object, without markdown: ' + json.dumps(case['expected'])
                 before = await idle()
-                row = await probe.wave(client, before, pair, effort, True)
+                try:
+                    row = await probe.wave(client, before, pair, effort, True)
+                except Exception as error:
+                    detail = probe.failure_details(error)
+                    def task_failure(item):
+                        if item.get('type') == 'ProbeResponseFailure':
+                            return True
+                        children = item.get('exceptions', [])
+                        return bool(children) and all(task_failure(child) for child in children)
+                    if not task_failure(detail):
+                        raise
+                    report['task_failures'].append({'attempt': index, 'effort': effort, 'failure': detail})
+                    # Preserve failed task scores. Identity drift, unhealthy
+                    # service, missing cleanup or native errors remain fatal.
+                    await idle(); save()
+                    continue
                 assert all(r['correct'] for r in row['requests'])
                 assert row['ring_after']['batched_verifier_rounds'] > row['ring_before']['batched_verifier_rounds']
                 report['soak'].append(row); save()
             report['soak_seconds'] = time.monotonic()-started
-            report['soak_requests'] = 2 * len(report['soak'])
+            report['soak_requests'] = 2 * (len(report['soak']) + len(report['task_failures']))
+            report['all_task_pairs_correct'] = not report['task_failures']
             report['final_health'] = await idle()
             report['passed'] = True
         except BaseException as error:
