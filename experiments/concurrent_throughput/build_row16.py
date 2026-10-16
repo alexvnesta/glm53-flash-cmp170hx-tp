@@ -47,8 +47,10 @@ def build(base, candidate, python, expected_native, *, translation_units=None):
     candidate_files = verify(candidate / "engine", candidate / "engine.sha256")
     receipt = json.loads((candidate / "preparation.json").read_text())
     rows = receipt['decode_max_rows']
-    if type(rows) is not int or rows not in (16, 32):
+    if type(rows) is not int or rows not in (16, 32, 64):
         raise ValueError('Unsupported native decode capacity')
+    if rows == 64 and translation_units is None:
+        raise ValueError('Row64 requires the reviewed CUDA translation units from build_row64')
     changes = receipt["changed_sources"]
     base_files = {p.relative_to(base / "engine").as_posix(): sha(p)
                   for p in (base / "engine").rglob("*")

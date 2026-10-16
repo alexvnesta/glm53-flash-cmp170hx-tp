@@ -4,8 +4,10 @@
 **15.3% at low effort** and **14.9% at high effort**, with all **384 scored
 tasks and 32 warmup requests correct**. The same 24 tasks finish about
 **14.6–14.8% sooner**. Four-way native drafting/verification and cancellation
-checks pass. The profile remains experimental; the qualified two-slot
-production default is restored pending broader four-slot qualification.
+checks pass. At the end of this speed screen, the qualified two-slot
+production profile was restored. The subsequent
+[runtime qualification](FOUR_SLOT_RUNTIME_2026-10-16.md) adds four-slot
+long-context, soak and restart-recovery evidence.
 
 This capacity-only trial keeps the qualified row32 engine and native extension.
 Both arms use the same reviewed service extension: paired-cache admission,
@@ -205,10 +207,11 @@ and watcher units are inactive. Production retains two slots, native SHA
 `f0a25e2c707748eed0679d7e58f92907ebd6eea4e3b2b1605037382baeb2d046` and profile digest
 `2bfd7ca630f488034cfc1be093317719aeb41e227a8e8766a3e2c856e637c91c`.
 
-**The speed screen passes; four slots are an opt-in experiment.** No new
-four-slot long-context soak, persistent-cache restart/recovery or general
-real-agent qualification is claimed. The production launcher and service
-defaults remain at two sequences.
+**The speed screen passes; four slots are an opt-in experiment.** This screen
+does not include long-context soak, persistent-cache restart/recovery or
+general real-agent qualification. The later
+[runtime follow-up](FOUR_SLOT_RUNTIME_2026-10-16.md) supplies synthetic capacity,
+soak and recovery checks. The general launcher defaults to two sequences.
 
 [Complete synthetic receipts](../experiments/concurrent_throughput/four_active_2026-10-16.json)
 retain all primary requests and scores, warmups, actual per-agent rates,

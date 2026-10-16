@@ -10,6 +10,19 @@ import sqlite3
 from pathlib import Path
 
 
+def summarize_ranges(rs,kernels):
+    sums=collections.defaultdict(lambda:[0,0.]);i=0;generic=set()
+    for start,end,device,name in kernels:
+        while i<len(rs) and rs[i][1]<start:i+=1
+        if i==len(rs):break
+        if start>=rs[i][0] and end<=rs[i][1]:
+            cat='generic_moe' if 'exl3_moe_kernel' in name else 'coop_moe' if 'exl3_moe_coop' in name else 'nccl' if 'ncclDevKernel' in name else 'native_collectives' if 'pg_' in name else 'other'
+            sums[cat][0]+=1;sums[cat][1]+=(end-start)/1e9
+            if cat=='generic_moe':generic.add(i)
+    return {'inclusive_range_s':sum(b-a for a,b in rs)/1e9,'ranges':len(rs),
+            'gpu_sums':dict(sums),'generic_ranges':len(generic)}
+
+
 def analyze(path):
     db=sqlite3.connect('file:'+str(path.resolve())+'?mode=ro',uri=True)
     ranges=collections.defaultdict(list)
@@ -20,17 +33,9 @@ def analyze(path):
     for short in ('iterate_gen','iterate_draftmodel_dflash_gen','prefill'):
         matched=[name for name in ranges if name.endswith('.'+short)]
         if len(matched)!=1:raise ValueError('Expected one annotated generator function: '+short)
-        rs=ranges[matched[0]];sums=collections.defaultdict(lambda:[0,0.]);i=0
-        generic=set()
-        for start,end,device,name in kernels:
-            while i<len(rs) and rs[i][1]<start:i+=1
-            if i==len(rs):break
-            if start>=rs[i][0] and end<=rs[i][1]:
-                cat='generic_moe' if 'exl3_moe_kernel' in name else 'coop_moe' if 'exl3_moe_coop' in name else 'nccl' if 'ncclDevKernel' in name else 'native_collectives' if 'pg_' in name else 'other'
-                sums[cat][0]+=1;sums[cat][1]+=(end-start)/1e9
-                if cat=='generic_moe':generic.add(i)
-        result['scopes'][short]={'inclusive_range_s':sum(b-a for a,b in rs)/1e9,'ranges':len(rs),
-            'gpu_sums':dict(sums),'generic_ranges':len(generic)}
+        result['scopes'][short]=summarize_ranges(ranges[matched[0]],kernels)
+    result['verification_rows']={name:summarize_ranges(rows,kernels)
+        for name,rows in ranges.items() if name.startswith('TARGET_ROWS_')}
     for device in sorted({k[2] for k in kernels}):
         rows=[k for k in kernels if k[2]==device];end=-1;busy=0
         for a,b,*_ in rows:busy+=max(0,b-max(a,end));end=max(b,end)
