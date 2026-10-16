@@ -61,7 +61,7 @@ def prepare(base, candidate, pid, port):
         text = path.read_text()
         updated = text
         for rel, change in preparation["changed_sources"].items():
-            if change["before"] in updated:
+            if change["before"] is not None and change["before"] in updated:
                 updated = updated.replace(change["before"], change["after"])
                 pins.setdefault(str(path.relative_to(target)), []).append(rel)
         if updated != text:
