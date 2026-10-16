@@ -47,6 +47,12 @@ tests procedural byte sums and a fixed-codebook lookup while preserving the
 64-register block-residency limit. It includes the unchanged serving benchmark,
 actual per-agent rates, exhaustive codebook checks and cache/occupancy evidence.
 
+The [warp-layout follow-up](docs/MOE_RETILE_2026-10-16.md) tests a different
+SM80 gate/up layout. It reduces registers from 64 to 60 while preserving
+occupancy, but regresses serving throughput. The report retains the same
+benchmark, actual per-agent rates and CPU-contention flags; the qualified
+row32 layout remains the default.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

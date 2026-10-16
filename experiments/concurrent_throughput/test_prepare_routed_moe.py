@@ -39,4 +39,20 @@ class RoutedPreparationTests(unittest.TestCase):
     def test_changed_anchor_refused_before_output(self):
         with self.assertRaisesRegex(ValueError,'anchor'):patch_header(TEMPLATE+'\n'+REG)
 
+    def test_retile_is_guarded_and_leaves_down_call_unmodified(self):
+        source=TEMPLATE+'() {\n'+REG+'''\n    constexpr int TWORDS = HALF ? 1 : 2;
+    constexpr int WN = tile_wn<WIDE>();
+    constexpr int WKK = tile_wk<WIDE>();
+}\n'''+CALL+' 0);\ngemv_tile<bits, cb, WIDE, HALF>(down);\n'
+        result=patch_header(source,'retile')
+        self.assertIn('__CUDA_ARCH__ == 800',result)
+        self.assertIn('GATE_UP && bits == 3 && cb == 2 && WIDE && !HALF',result)
+        self.assertIn('constexpr int WNT = RETILE ? 1 :',result)
+        self.assertIn('constexpr int COLS = WNT * 16;',result)
+        self.assertIn('constexpr int WN = RETILE ? 8 :',result)
+        self.assertIn('constexpr int WKK = RETILE ? 2 :',result)
+        self.assertIn('gemv_tile<bits, cb, WIDE, HALF>(down)',result)
+        with self.assertRaisesRegex(ValueError,'Retile anchor'):
+            patch_header(source.replace('    constexpr int WN = tile_wn<WIDE>();',''), 'retile')
+
 if __name__=='__main__':unittest.main()
