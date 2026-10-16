@@ -36,6 +36,12 @@ and moving broadcasts above 2 KiB to NCCL regressed low-effort concurrent
 delivery by 11.5–12.9%, with no consistent high-effort gain. The report includes
 matched aggregate/per-agent token rates, elapsed time and all 384 scored tasks.
 
+The [routed-MoE investigation](docs/ROUTED_MOE_2026-10-16.md) identifies the
+3-bit gate/up kernel as the largest individual GPU cost. A staged decoder
+produced no consistent serving gain; deeper prefetch crossed a register
+occupancy threshold and slowed kernel timings. Production retains row32.
+The report includes matched aggregate/per-agent tok/s and hardware counters.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

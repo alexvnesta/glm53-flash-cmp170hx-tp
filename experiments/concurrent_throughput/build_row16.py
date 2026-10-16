@@ -1,7 +1,8 @@
 """CPU-only incremental rebuild; no model loading or service operations.
 
-Reuses attested native objects and rebuilds every C++ translation unit that
-includes the changed class header. Both engines must share all other sources.
+Reuses attested native objects. Capacity variants rebuild the three C++ units
+that include the changed class header; a variant-specific wrapper can declare
+reviewed CUDA units instead. All other objects retain their attested bytes.
 """
 
 import argparse
@@ -39,11 +40,11 @@ def compile_command(cmd, rel, engine, build_dir):
             .replace(old_build, str(build_dir) + "/") for arg in cmd]
 
 
-def build(base, candidate, python, expected_native):
+def build(base, candidate, python, expected_native, *, translation_units=None):
     so, = (base / "native").glob("exllamav3_ext*.so")
     if sha(so) != expected_native:
         raise ValueError("Qualified native SHA mismatch")
-    verify(candidate / "engine", candidate / "engine.sha256")
+    candidate_files = verify(candidate / "engine", candidate / "engine.sha256")
     receipt = json.loads((candidate / "preparation.json").read_text())
     rows = receipt['decode_max_rows']
     if type(rows) is not int or rows not in (16, 32):
@@ -59,6 +60,14 @@ def build(base, candidate, python, expected_native):
             raise ValueError("Unreviewed candidate source change: " + rel)
     if any(base_files.get(rel) != values["before"] for rel, values in changes.items()):
         raise ValueError("Candidate was prepared against a different base")
+    additions = {rel for rel, values in changes.items() if values["before"] is None}
+    if set(candidate_files) != set(base_files) | additions:
+        raise ValueError("Unreviewed candidate file set")
+    for rel in additions:
+        if candidate_files[rel] != changes[rel]["after"]:
+            raise ValueError("Added source identity changed: " + rel)
+    rebuild_sources = tuple(translation_units) if translation_units is not None else tuple(
+        NATIVE_SUBDIR / (name + ".cpp") for name in REBUILD)
     base_build = base / "native/.build"
     base_objects = sorted(base_build.glob("exllamav3/**/*.o"))
     custody = json.loads((base / "build-receipt.json").read_text())["object_hashes"]
@@ -78,18 +87,17 @@ def build(base, candidate, python, expected_native):
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": "", "TORCH_CUDA_ARCH_LIST": "8.0", "MAX_JOBS": "1"}
     started = time.monotonic()
     used = []
-    for name in REBUILD:
-        rel = NATIVE_SUBDIR / (name + ".cpp")
+    for rel in rebuild_sources:
         matches = [shlex.split(c) for c in commands if str(rel) in c]
         if len(matches) != 1:
-            raise ValueError(f"Expected one compile command: {name}")
+            raise ValueError(f"Expected one compile command: {rel}")
         cmd = compile_command(matches[0], rel, candidate / "engine", build_dir)
-        print("compile " + name, flush=True)
+        print("compile " + str(rel), flush=True)
         subprocess.run(["nice", "-n", "19", "ionice", "-c3", *cmd],
                        cwd=candidate / "engine", env=env, check=True)
         used.append(cmd)
     objects = sorted(build_dir.glob("exllamav3/**/*.o"))
-    rebuilt = {str(NATIVE_SUBDIR / (name + ".o")) for name in REBUILD}
+    rebuilt = {str(rel.with_suffix(".o")) for rel in rebuild_sources}
     for obj in objects:
         rel = str(obj.relative_to(build_dir))
         if rel not in rebuilt and sha(obj) != custody[rel]:
