@@ -213,6 +213,23 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.jobs[-1].cancelled)
         self.assertFalse(self.lock.locked())
 
+    async def test_clear_thinking_reaches_the_template_only_when_a_client_asks(self):
+        seen = []
+        self.api.runtime["template"] = NS(render=lambda **kwargs: seen.append(kwargs) or "<think>")
+        response = await self.post(response_format={"type": "text"},
+                                   chat_template_kwargs={"clear_thinking": False})
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.post(response_format={"type": "text"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIs(seen[0]["clear_thinking"], False)
+        self.assertNotIn("clear_thinking", seen[1])
+
+    async def test_an_unknown_or_loose_template_switch_is_refused_before_a_job(self):
+        for switches in ({"enable_thinking": False}, {"clear_thinking": "false"}, {"clear_thinking": 0}):
+            response = await self.post(response_format={"type": "text"}, chat_template_kwargs=switches)
+            self.assertEqual(response.status_code, 400, (switches, response.text))
+        self.assertEqual(self.jobs, [])
+
     async def test_disabled_or_conflicting_json_requests_do_not_allocate_a_job(self):
         self.api.runtime["json_mode"] = False
         response = await self.post()

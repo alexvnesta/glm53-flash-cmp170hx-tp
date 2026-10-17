@@ -152,6 +152,14 @@ def resolve_request_model(model, effort, effort_given):
     return MODEL_ID, effort if effort_given else alias_effort
 
 
+class ChatTemplateKwargs(BaseModel):
+    """The template switches a client may set. Only GLM's `clear_thinking`: false renders every earlier
+    assistant reasoning, not only those after the last user message, which an agent that ends each request
+    with a user note needs to see its own plan. Absent leaves the template's default."""
+    model_config = ConfigDict(extra="forbid")
+    clear_thinking: bool | None = Field(default=None, strict=True)
+
+
 class CompletionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model: str = MODEL_ID
@@ -184,6 +192,7 @@ class CompletionRequest(BaseModel):
     # Accepted for client compatibility. This model always thinks, so thinking "disabled" selects the lowest effort unless
     # reasoning_effort is given; the other fields are standard OpenAI request fields with no effect here.
     thinking: dict | None = None
+    chat_template_kwargs: ChatTemplateKwargs | None = None
     metadata: dict | None = None
     service_tier: str | None = None
     prompt_cache_key: str | None = None
@@ -222,14 +231,20 @@ class CompletionRequest(BaseModel):
         return self
 
 
-def render_prompt(template, messages, effort, tools=None):
+def render_prompt(template, messages, effort, tools=None, clear_thinking=None):
     for message in messages:
         if isinstance(message["content"], list):
             if any(part.get("type") != "text" or not isinstance(part.get("text"), str)
                    for part in message["content"]):
                 raise ValueError("Only text message content is supported")
+    # Only a client's explicit choice reaches the template, so every other request renders as before.
+    switches = {} if clear_thinking is None else {"clear_thinking": clear_thinking}
     return template.render(messages=messages, tools=tools, add_generation_prompt=True,
-                           reasoning_effort=effort)
+                           reasoning_effort=effort, **switches)
+
+
+def template_clear_thinking(body):
+    return body.chat_template_kwargs.clear_thinking if body.chat_template_kwargs else None
 
 
 class ReasoningSplitter:
@@ -557,7 +572,7 @@ async def tokenize(body: TokenizeRequest, request: Request):
 def chat_token_length(fields):
     """--experimental-vision: the exact prompt length of a chat body, images included, without running the tower."""
     allowed = ("model", "messages", "tools", "tool_choice", "parallel_tool_calls", "reasoning_effort", "thinking",
-               "response_format")
+               "response_format", "chat_template_kwargs")
     try:
         body = CompletionRequest(**{key: value for key, value in fields.items() if key in allowed})
         tool_choice = (body.tool_choice.model_dump() if isinstance(body.tool_choice, NamedToolChoice)
@@ -566,7 +581,8 @@ def chat_token_length(fields):
                                         [t.model_dump(exclude_none=True) for t in body.tools or []],
                                         tool_choice, body.parallel_tool_calls)
         messages, images = runtime["vision"].rewrite(messages)
-        prompt = render_prompt(runtime["template"], messages, body.reasoning_effort, tools)
+        prompt = render_prompt(runtime["template"], messages, body.reasoning_effort, tools,
+                               template_clear_thinking(body))
         tokens = (runtime["vision"].count_tokens(prompt, images, runtime["tokenizer"]) if images
                   else runtime["tokenizer"].encode(prompt, encode_special_tokens=True).shape[-1])
     except (ValueError, KeyError) as error:     # pydantic's ValidationError is a ValueError
@@ -655,7 +671,7 @@ async def complete(body, request, chat):
                 # Image parts become alias text first, so render_prompt still refuses any other media.
                 messages, images = runtime["vision"].rewrite(messages)
             prompt = render_prompt(runtime["template"],
-                                   messages, body.reasoning_effort, tools)
+                                   messages, body.reasoning_effort, tools, template_clear_thinking(body))
         except (ValueError, KeyError) as error:
             raise HTTPException(400, str(error)) from error
     else:
