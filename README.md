@@ -97,6 +97,15 @@ registration failure during restart. The allocator remains experimental;
 production retains the four-slot GPU cache. The accompanying router fix keeps
 requests waiting through backend reloads and exposes leases while unready.
 
+The [community benchmark](docs/COMMUNITY_BENCHMARK_2026-10-17.md) runs the
+unmodified llm-inference-bench v0.8.0 against the local four-slot Weightless
+profile at 1, 2 and 4 agents and low, high and max effort. Four agents on its
+short prompt deliver **82.7 / 96.3 / 101.2 tok/s** aggregate at low / high / max;
+at a nominal 128K input, 56.1 / 65.4 / 68.0. Its prose workload differs from the
+structured tasks above, so the two sets of numbers are not comparable. Each cell
+is one 30-second run. The [four-slot source profile](profiles/community-four-active/README.md)
+reproduces the serving code, and the retained runs regenerate every table.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |
