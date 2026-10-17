@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import unittest
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 from glm_async import responsive_generator_class
@@ -48,6 +49,66 @@ class Base:
 
 
 class IdlePersistenceContracts(unittest.IsolatedAsyncioTestCase):
+    async def test_last_job_cancel_flushes_on_step_worker_and_drains_repeated_cancellation(self):
+        loop_thread = threading.get_ident()
+        started, release = threading.Event(), threading.Event()
+        threads, notifications = [], []
+        sentinel = object()
+
+        class Owner:
+            @contextmanager
+            def step(self):
+                threads.append(threading.get_ident())
+                self.active = True
+                try:yield
+                finally:self.active = False
+
+        owner = Owner()
+
+        class CancellingEngine:
+            _glm_native_concurrency = owner
+
+            def cancel(self, job):
+                self.assert_owner = owner.active
+                started.set()
+                if not release.wait(3):raise TimeoutError('cancel flush not released')
+                assert owner.active
+
+        engine = CancellingEngine()
+        class CancelBase:
+            def __init__(self, engine):
+                self.generator, self.jobs, self.error = engine, {}, None
+                self.iteration_task = asyncio.create_task(asyncio.Event().wait())
+
+            async def close(self):
+                self.iteration_task.cancel()
+                try:await self.iteration_task
+                except asyncio.CancelledError:pass
+
+        server = responsive_generator_class(CancelBase, sentinel)(engine)
+        step_thread = await asyncio.get_running_loop().run_in_executor(server._gpu_worker, threading.get_ident)
+        job = SimpleNamespace(job=object(), put_result=lambda value: notifications.append((threading.get_ident(), value)))
+        server.jobs[job.job] = job
+        try:
+            task = asyncio.create_task(server.cancel(job))
+            self.assertTrue(await asyncio.to_thread(started.wait, 2))
+            task.cancel();await asyncio.sleep(0);task.cancel();await asyncio.sleep(0)
+            self.assertFalse(task.done())
+            self.assertTrue(server._step_lock.locked())
+            self.assertIn(job.job, server.jobs)
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):await task
+            self.assertNotEqual(threads[0], loop_thread)
+            self.assertEqual(threads[0], step_thread)
+            self.assertTrue(engine.assert_owner)
+            self.assertFalse(owner.active)
+            self.assertFalse(server._step_lock.locked())
+            self.assertNotIn(job.job, server.jobs)
+            self.assertEqual(notifications, [(loop_thread, sentinel)])
+        finally:
+            release.set()
+            await server.close()
+
     def test_uncertain_b2_custody_aborts_disk_before_raising(self):
         aborted = threading.Event()
         owner = B2Retention.__new__(B2Retention)

@@ -45,6 +45,10 @@ jobs:
         run: python -m unittest discover -s experiments/concurrent_throughput -v
       - name: Check community benchmark counter observation
         run: python -m unittest discover -s experiments/community_benchmark -v
+      - name: Reproduce the measured four-slot community profile
+        run: |
+          python profiles/community-four-active/prepare.py "$RUNNER_TEMP/community-profile"
+          bash -n profiles/community-four-active/run.sh
       - name: Reproduce cold graph capture scheduling on CPU
         run: python experiments/tp-graph-capture/test_capture_schedule.py
       - name: Reproduce the Weightless variant manifest

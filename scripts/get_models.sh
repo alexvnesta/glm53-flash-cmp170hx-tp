@@ -10,7 +10,7 @@ TARGET_REPO=turboderp/GLM-5.3-Flash-exl3
 TARGET_REV=332ab457b709b7ba30dd9a448be5de03b80a7ac9      # 3.05 bpw branch tip
 DRAFT_REPO=incoai/GLM-5.3-Flash-DFlash2
 DRAFT_REV=bf582e4eacc1810f76656d1811693ff6c6737d2a
-export PYTHONPATH="$ROOT/native:$ROOT/engine-src:$ROOT/service/glm${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="${GLM53_NATIVE_DIR:-$ROOT/native}:${GLM53_ENGINE_SRC:-$ROOT/engine-src}:$ROOT/service/glm${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$MODELS_DIR"
 fetch() {  # repo revision dir
   # Always resolve the pinned snapshot; config.json alone cannot prove a complete or correct download.
