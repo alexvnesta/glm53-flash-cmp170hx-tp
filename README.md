@@ -167,6 +167,11 @@ Any OpenAI-compatible client works with base URL `http://127.0.0.1:8012/v1` and 
 - **Reasoning effort:** send `reasoning_effort` (`low`, `high`, `max`), or use the model names `GLM-5.3-Flash-low`,
   `-high`, `-max`. The default is `high`. `max` is much slower on everyday prompts but more careful on hard lookups.
 - **Tools:** standard OpenAI `tools` / `tool_calls`, streaming or not.
+- **Earlier reasoning:** GLM's template shows the model its earlier reasoning only after the last user message.
+  An agent that ends every request with a user note can send `chat_template_kwargs: {"clear_thinking": false}`,
+  with each earlier `reasoning_content`, to keep its plan in view. Keep that history append-only: removing old
+  reasoning edits the middle of the prompt and costs the prompt cache, as does turning the switch on partway
+  through a conversation (once). No other template switch is accepted.
 - **JSON objects:** opt in at startup with `--experimental-json-mode` and request
   `response_format: {"type":"json_object"}`. See the
   [contract and qualification](docs/JSON_ROW16_QUALIFICATION_2026-10-16.md).
