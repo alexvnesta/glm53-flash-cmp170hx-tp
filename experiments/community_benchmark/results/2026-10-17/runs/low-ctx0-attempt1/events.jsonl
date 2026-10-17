@@ -1,0 +1,31 @@
+{"t": 1792240097.607206, "event": "benchmark start engine=openai_proxy"}
+{"t": 1792240097.6073349, "event": "startup server=http://127.0.0.1:8014 model=GLM-5.3-Flash-low"}
+{"t": 1792240097.6073709, "event": "startup decode concurrency=1,2,4 contexts=0"}
+{"t": 1792240097.6073954, "event": "startup NVIDIA P2P override: not effective: missing=ForceP2P,RMForceP2PType,GrdmaPciTopoCheckOverride; mismatched=RMPcieP2PType"}
+{"t": 1792240097.6074152, "event": "startup KV cache budget manual: 655,360 tokens"}
+{"t": 1792240097.607432, "event": "startup engine OpenAI-compatible proxy models=['GLM-5.3-Flash', 'GLM-5.3-Flash-low', 'GLM-5.3-Flash-high', 'GLM-5.3-Flash-max']"}
+{"t": 1792240097.6074488, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792240097.6074655, "event": "startup model context length: 392,960 tokens"}
+{"t": 1792240097.6074808, "event": "startup prefill tests: skipped"}
+{"t": 1792240097.607496, "event": "startup startup preparation done"}
+{"t": 1792240097.6075115, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792240097.6078498, "event": "hardware monitor interval=2s"}
+{"t": 1792240097.6134913, "event": "decode warmup start"}
+{"t": 1792240098.2677672, "event": "decode warmup start C=1 ctx=0 3s"}
+{"t": 1792240098.2734385, "event": "cell start C=1 ctx=0"}
+{"t": 1792240103.7852945, "event": "ready C=1 ctx=0 metrics_unavailable, active_streams=1/1, stable=3.0s"}
+{"t": 1792240106.8154724, "event": "cell done C=1 ctx=0 34.4 tok/s"}
+{"t": 1792240106.8156216, "event": "cell end C=1 ctx=0 tps=34.4"}
+{"t": 1792240106.8158462, "event": "decode warmup done C=1 ctx=0"}
+{"t": 1792240108.8241963, "event": "cell start C=1 ctx=0"}
+{"t": 1792240114.335169, "event": "ready C=1 ctx=0 metrics_unavailable, active_streams=1/1, stable=3.0s"}
+{"t": 1792240144.3658938, "event": "cell done C=1 ctx=0 41.5 tok/s"}
+{"t": 1792240144.3660905, "event": "cell end C=1 ctx=0 tps=41.5"}
+{"t": 1792240146.3753364, "event": "cell start C=2 ctx=0"}
+{"t": 1792240151.8901832, "event": "ready C=2 ctx=0 metrics_unavailable, active_streams=2/2, stable=3.0s"}
+{"t": 1792240181.960616, "event": "cell done C=2 ctx=0 64.3 tok/s"}
+{"t": 1792240181.9608223, "event": "cell end C=2 ctx=0 tps=64.3"}
+{"t": 1792240183.9704833, "event": "cell start C=4 ctx=0"}
+{"t": 1792240189.4835303, "event": "ready C=4 ctx=0 metrics_unavailable, active_streams=4/4, stable=3.0s"}
+{"t": 1792240219.5790358, "event": "cell done C=4 ctx=0 83.0 tok/s"}
+{"t": 1792240219.5792477, "event": "cell end C=4 ctx=0 tps=83.0"}

@@ -1,0 +1,226 @@
+{
+  "label": "smoke",
+  "attempt": 1,
+  "effort": "low",
+  "context": 0,
+  "finite": false,
+  "started": "2026-10-17T12:20:02.668841+00:00",
+  "finished": "2026-10-17T12:20:12.892361+00:00",
+  "wall_seconds": 10.223501096013933,
+  "profile_digest": "f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7",
+  "command": [
+    "/data2/llm-models/glm53-stream-usage-20261017/bench-venv/bin/python",
+    "/data2/llm-models/glm53-stream-usage-20261017/observe.py",
+    "/data2/llm-models/glm53-stream-usage-20261017/llm_decode_bench-v0.8.0.py",
+    "--",
+    "--host",
+    "http://127.0.0.1:8014",
+    "--model",
+    "GLM-5.3-Flash-low",
+    "--concurrency",
+    "1",
+    "--contexts",
+    "0",
+    "--prefill-contexts",
+    "0",
+    "--skip-prefill",
+    "--kv-budget",
+    "655360",
+    "--max-tokens",
+    "512",
+    "--temperature",
+    "0",
+    "--duration",
+    "3",
+    "--token-targeting",
+    "exact",
+    "--decode-warmup-seconds",
+    "0",
+    "--display-mode",
+    "plain",
+    "--no-resume",
+    "--output",
+    "benchmark_results.json"
+  ],
+  "exit_code": 0,
+  "accepted": false,
+  "error": "HTTP Error 503: Service Unavailable",
+  "health_samples": [
+    {
+      "at": "2026-10-17T12:20:02.674510+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 0,
+      "pending_sequences": 0,
+      "efforts": []
+    },
+    {
+      "at": "2026-10-17T12:20:03.181602+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 0,
+      "pending_sequences": 0,
+      "efforts": []
+    },
+    {
+      "at": "2026-10-17T12:20:03.688732+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:04.196206+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:04.705550+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:05.212795+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:05.720426+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:06.228572+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:06.736435+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:07.245848+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:07.754546+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:08.262014+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:08.769499+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:09.277323+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:09.786334+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:10.295075+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:10.803309+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:11.312066+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:11.820523+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    },
+    {
+      "at": "2026-10-17T12:20:12.327802+00:00",
+      "psi_cpu_avg10": 0.0,
+      "active_sequences": 1,
+      "pending_sequences": 0,
+      "efforts": [
+        "low"
+      ]
+    }
+  ]
+}

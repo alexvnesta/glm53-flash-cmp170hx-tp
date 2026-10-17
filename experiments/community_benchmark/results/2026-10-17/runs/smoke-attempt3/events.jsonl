@@ -1,0 +1,17 @@
+{"t": 1792240077.227199, "event": "benchmark start engine=openai_proxy"}
+{"t": 1792240077.227257, "event": "startup server=http://127.0.0.1:8014 model=GLM-5.3-Flash-low"}
+{"t": 1792240077.227285, "event": "startup decode concurrency=1 contexts=0"}
+{"t": 1792240077.2273047, "event": "startup NVIDIA P2P override: not effective: missing=ForceP2P,RMForceP2PType,GrdmaPciTopoCheckOverride; mismatched=RMPcieP2PType"}
+{"t": 1792240077.2273226, "event": "startup KV cache budget manual: 655,360 tokens"}
+{"t": 1792240077.227339, "event": "startup engine OpenAI-compatible proxy models=['GLM-5.3-Flash', 'GLM-5.3-Flash-low', 'GLM-5.3-Flash-high', 'GLM-5.3-Flash-max']"}
+{"t": 1792240077.2273548, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792240077.2273707, "event": "startup model context length: 392,960 tokens"}
+{"t": 1792240077.227386, "event": "startup prefill tests: skipped"}
+{"t": 1792240077.2274013, "event": "startup startup preparation done"}
+{"t": 1792240077.2274206, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792240077.2277339, "event": "hardware monitor interval=2s"}
+{"t": 1792240077.2332182, "event": "decode warmup start"}
+{"t": 1792240077.9699578, "event": "cell start C=1 ctx=0"}
+{"t": 1792240083.4803333, "event": "ready C=1 ctx=0 metrics_unavailable, active_streams=1/1, stable=3.0s"}
+{"t": 1792240086.5197191, "event": "cell done C=1 ctx=0 34.9 tok/s"}
+{"t": 1792240086.5198689, "event": "cell end C=1 ctx=0 tps=34.9"}

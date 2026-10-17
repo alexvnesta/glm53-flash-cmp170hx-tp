@@ -1,0 +1,21 @@
+{"t": 1792242626.5852885, "event": "benchmark start engine=openai_proxy"}
+{"t": 1792242626.5853527, "event": "startup server=http://127.0.0.1:8014 model=GLM-5.3-Flash-low"}
+{"t": 1792242626.585382, "event": "startup decode concurrency=1,2,4 contexts=0"}
+{"t": 1792242626.585401, "event": "startup NVIDIA P2P override: not effective: missing=ForceP2P,RMForceP2PType,GrdmaPciTopoCheckOverride; mismatched=RMPcieP2PType"}
+{"t": 1792242626.585419, "event": "startup KV cache budget manual: 655,360 tokens"}
+{"t": 1792242626.5854359, "event": "startup engine OpenAI-compatible proxy models=['GLM-5.3-Flash', 'GLM-5.3-Flash-low', 'GLM-5.3-Flash-high', 'GLM-5.3-Flash-max']"}
+{"t": 1792242626.585452, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792242626.5854726, "event": "startup model context length: 392,960 tokens"}
+{"t": 1792242626.5854883, "event": "startup prefill tests: skipped"}
+{"t": 1792242626.585504, "event": "startup startup preparation done"}
+{"t": 1792242626.5855196, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792242626.5860484, "event": "hardware monitor interval=2s"}
+{"t": 1792242626.5917246, "event": "decode warmup start"}
+{"t": 1792242627.3202767, "event": "decode warmup start C=1 ctx=0 3s"}
+{"t": 1792242627.3259187, "event": "cell start C=1 ctx=0"}
+{"t": 1792242632.8409512, "event": "ready C=1 ctx=0 metrics_unavailable, active_streams=1/1, stable=3.0s"}
+{"t": 1792242635.863329, "event": "cell done C=1 ctx=0 35.4 tok/s"}
+{"t": 1792242635.8634744, "event": "cell end C=1 ctx=0 tps=35.4"}
+{"t": 1792242635.8637133, "event": "decode warmup done C=1 ctx=0"}
+{"t": 1792242637.8719957, "event": "cell start C=1 ctx=0"}
+{"t": 1792242649.9306846, "event": "measure start C=1 ctx=0 request-count=4"}

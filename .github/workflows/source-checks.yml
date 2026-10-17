@@ -43,6 +43,16 @@ jobs:
           python service/tests/test_weightless_options.py
       - name: Check bounded concurrency probe and isolated variant preparation
         run: python -m unittest discover -s experiments/concurrent_throughput -v
+      - name: Check community benchmark counter observation
+        run: python -m unittest discover -s experiments/community_benchmark -v
+      - name: Regenerate the packaged community results from the retained runs
+        run: |
+          python experiments/community_benchmark/package.py
+          git diff --exit-code -- experiments/community_benchmark/results docs/COMMUNITY_BENCHMARK_2026-10-17.md
+      - name: Reproduce the measured four-slot community profile
+        run: |
+          python profiles/community-four-active/prepare.py "$RUNNER_TEMP/community-profile"
+          bash -n profiles/community-four-active/run.sh
       - name: Reproduce cold graph capture scheduling on CPU
         run: python experiments/tp-graph-capture/test_capture_schedule.py
       - name: Reproduce the Weightless variant manifest

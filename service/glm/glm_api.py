@@ -464,6 +464,8 @@ async def health():
     b2_cache = getattr(generator, "_glm_b2_retention", None)
     return {"status": "ok", "engine": "ExLlamaV3", "model": MODEL_ID, "context_length": runtime["context_length"],
             "json_output": glm_json_output.health(runtime.get("json_mode", False)),
+            "stream_usage": {"continuous_usage_stats": True, "source": "native_emitted_token_ids",
+                             "final_source": "native_new_tokens", "requires_include_usage": True},
             "weightless": runtime.get("weightless", {"enabled": False}),
             "profile_digest": runtime.get("profile_digest"),
             "recurrent_state_dtype": "fp32" if runtime["args"].recurrent_state_fp32 else "fp16",
@@ -759,6 +761,8 @@ async def complete(body, request, chat):
     usage = {"prompt_tokens": prompt_tokens, "completion_tokens": 0, "total_tokens": prompt_tokens}
     reason = "stop"
     timings = {"http_queue_ms": admission_wait * 1000}
+    continuous_usage = bool(body.stream and (body.stream_options or {}).get("include_usage")
+                            and (body.stream_options or {}).get("continuous_usage_stats"))
 
     def envelope(choices, streaming=False):
         return {"id": ident, "object": ("chat.completion.chunk" if streaming else "chat.completion")
@@ -766,6 +770,12 @@ async def complete(body, request, chat):
 
     def event(payload):
         return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+    def stream_chunk(choices):
+        payload = envelope(choices, True)
+        if continuous_usage:
+            payload["usage"] = dict(usage)
+        return payload
 
     async def cancel_and_report():
         try:
@@ -784,7 +794,7 @@ async def complete(body, request, chat):
         nonlocal reason
         try:
             if body.stream and chat:
-                yield envelope([{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}], True)
+                yield stream_chunk([{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}])
             async for result in job:
                 if observation:
                     observation.observe(result)
@@ -794,6 +804,17 @@ async def complete(body, request, chat):
                     return
                 if result["stage"] != "streaming":
                     continue
+                if continuous_usage:
+                    # Native emitted token IDs include reasoning and multi-token speculative
+                    # batches. Count each engine event once, before splitting it into API
+                    # channels. EOS supplies the authoritative total, including stop tokens
+                    # withheld from the visible text. Never estimate tokens from SSE chunks.
+                    token_ids = result.get("token_ids")
+                    count = (int(result["new_tokens"]) if result["eos"] else
+                             usage["completion_tokens"] + (int(token_ids.numel()) if token_ids is not None else 0))
+                    if count < usage["completion_tokens"]:
+                        raise ValueError("Native completion token count decreased")
+                    usage.update(completion_tokens=count, total_tokens=prompt_tokens + count)
                 text = stream_text(result, runtime["tokenizer"])
                 delta = splitter.feed(text, final=result["eos"]) if chat else {"content": text}
                 deltas = []
@@ -812,7 +833,9 @@ async def complete(body, request, chat):
                     if body.stream:
                         choice = {"index": 0, "finish_reason": None}
                         choice.update({"delta": delta} if chat else {"text": delta.get("content", "")})
-                        yield envelope([choice], True)
+                        yield stream_chunk([choice])
+                if body.stream and continuous_usage and not deltas:
+                    yield stream_chunk([])
                 if result["eos"]:
                     reason = "length" if result.get("eos_reason") == "max_new_tokens" else "stop"
                     usage["completion_tokens"] = int(result["new_tokens"])
@@ -845,7 +868,7 @@ async def complete(body, request, chat):
             if body.stream:
                 choice = {"index": 0, "finish_reason": reason}
                 choice.update({"delta": {}} if chat else {"text": ""})
-                yield {**envelope([choice], True), "timings": timings}
+                yield {**stream_chunk([choice]), "timings": timings}
                 if (body.stream_options or {}).get("include_usage"):
                     yield {**envelope([], True), "usage": usage}
         except BaseException as error:

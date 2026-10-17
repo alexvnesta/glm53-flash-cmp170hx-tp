@@ -1,0 +1,444 @@
+EXPERIMENTAL Weightless GLP enabled: sha256=0ccce6b748f87da81505ff2bc3ca82429110940b6c0def60063d304785ccc00c alpha=2.0 layers=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44]
+INFO:     Started server process [764833]
+INFO:     Waiting for application startup.
+Loading GLM: GPU 0+1, full VRAM, DFlash2 EXL3 6bpw K7
+ -- NCCL init: world_size 2, rank 1, device 0, init_method tcp://127.0.0.1:46587
+ -- NCCL warmup, device 0, please wait...
+ -- Finished NCCL warmup, device 0
+ -- Model split:
+    ----------------------------------------------------------------------------------
+                                                      Units           CUDA:0    CUDA:1
+    ----------------------------------------------------------------------------------
+    model.language_model.layers.0.self_attn           K-heads             32        32
+    model.language_model.layers.0.mlp                 channels          6144      6144
+    model.language_model.layers.1.self_attn           K-heads             32        32
+    model.language_model.layers.1.mlp                 channels          6144      6144
+    model.language_model.layers.2.self_attn           K-heads             32        32
+    model.language_model.layers.2.mlp                 channels          6144      6144
+    model.language_model.layers.3.self_attn           heads                0        64
+    model.language_model.layers.3.mlp                 experts            144       144
+    model.language_model.layers.3.mlp.shared_experts  channels             0      2048
+    model.language_model.layers.4.self_attn           K-heads             32        32
+    model.language_model.layers.4.mlp                 experts            143       145
+    model.language_model.layers.4.mlp.shared_experts  channels             0      2048
+    model.language_model.layers.5.self_attn           K-heads             32        32
+    model.language_model.layers.5.mlp                 experts            144       144
+    model.language_model.layers.5.mlp.shared_experts  channels             0      2048
+    model.language_model.layers.6.self_attn           K-heads             32        32
+    model.language_model.layers.6.mlp                 experts            144       144
+    model.language_model.layers.6.mlp.shared_experts  channels             0      2048
+    model.language_model.layers.7.self_attn           heads                0        64
+    model.language_model.layers.7.mlp                 experts            144       144
+    model.language_model.layers.7.mlp.shared_experts  channels          2048         0
+    model.language_model.layers.8.self_attn           K-heads             32        32
+    model.language_model.layers.8.mlp                 experts            144       144
+    model.language_model.layers.8.mlp.shared_experts  channels          2048         0
+    model.language_model.layers.9.self_attn           K-heads             32        32
+    model.language_model.layers.9.mlp                 experts            144       144
+    model.language_model.layers.9.mlp.shared_experts  channels          2048         0
+    model.language_model.layers.10.self_attn          K-heads             32        32
+    model.language_model.layers.10.mlp                experts            144       144
+    model.language_model.layers.10.mlp.shared_experts channels          2048         0
+    model.language_model.layers.11.self_attn          heads               64         0
+    model.language_model.layers.11.mlp                experts            143       145
+    model.language_model.layers.11.mlp.shared_experts channels             0      2048
+    model.language_model.layers.12.self_attn          K-heads             32        32
+    model.language_model.layers.12.mlp                experts            143       145
+    model.language_model.layers.12.mlp.shared_experts channels             0      2048
+    model.language_model.layers.13.self_attn          K-heads             32        32
+    model.language_model.layers.13.mlp                experts            143       145
+    model.language_model.layers.13.mlp.shared_experts channels             0      2048
+    model.language_model.layers.14.self_attn          K-heads             32        32
+    model.language_model.layers.14.mlp                experts            143       145
+    model.language_model.layers.14.mlp.shared_experts channels             0      2048
+    model.language_model.layers.15.self_attn          heads                0        64
+    model.language_model.layers.15.mlp                experts            144       144
+    model.language_model.layers.15.mlp.shared_experts channels          2048         0
+    model.language_model.layers.16.self_attn          K-heads             32        32
+    model.language_model.layers.16.mlp                experts            144       144
+    model.language_model.layers.16.mlp.shared_experts channels          2048         0
+    model.language_model.layers.17.self_attn          K-heads             32        32
+    model.language_model.layers.17.mlp                experts            144       144
+    model.language_model.layers.17.mlp.shared_experts channels          2048         0
+    model.language_model.layers.18.self_attn          K-heads             32        32
+    model.language_model.layers.18.mlp                experts            144       144
+    model.language_model.layers.18.mlp.shared_experts channels          2048         0
+    model.language_model.layers.19.self_attn          heads               64         0
+    model.language_model.layers.19.mlp                experts            143       145
+    model.language_model.layers.19.mlp.shared_experts channels             0      2048
+    model.language_model.layers.20.self_attn          K-heads             32        32
+    model.language_model.layers.20.mlp                experts            143       145
+    model.language_model.layers.20.mlp.shared_experts channels             0      2048
+    model.language_model.layers.21.self_attn          K-heads             32        32
+    model.language_model.layers.21.mlp                experts            143       145
+    model.language_model.layers.21.mlp.shared_experts channels             0      2048
+    model.language_model.layers.22.self_attn          K-heads             32        32
+    model.language_model.layers.22.mlp                experts            143       145
+    model.language_model.layers.22.mlp.shared_experts channels             0      2048
+    model.language_model.layers.23.self_attn          heads                0        64
+    model.language_model.layers.23.mlp                experts            145       143
+    model.language_model.layers.23.mlp.shared_experts channels          2048         0
+    model.language_model.layers.24.self_attn          K-heads             32        32
+    model.language_model.layers.24.mlp                experts            145       143
+    model.language_model.layers.24.mlp.shared_experts channels          2048         0
+    model.language_model.layers.25.self_attn          K-heads             32        32
+    model.language_model.layers.25.mlp                experts            144       144
+    model.language_model.layers.25.mlp.shared_experts channels          2048         0
+    model.language_model.layers.26.self_attn          K-heads             32        32
+    model.language_model.layers.26.mlp                experts            144       144
+    model.language_model.layers.26.mlp.shared_experts channels          2048         0
+    model.language_model.layers.27.self_attn          heads               64         0
+    model.language_model.layers.27.mlp                experts            143       145
+    model.language_model.layers.27.mlp.shared_experts channels             0      2048
+    model.language_model.layers.28.self_attn          K-heads             32        32
+    model.language_model.layers.28.mlp                experts            143       145
+    model.language_model.layers.28.mlp.shared_experts channels             0      2048
+    model.language_model.layers.29.self_attn          K-heads             32        32
+    model.language_model.layers.29.mlp                experts            143       145
+    model.language_model.layers.29.mlp.shared_experts channels             0      2048
+    model.language_model.layers.30.self_attn          K-heads             32        32
+    model.language_model.layers.30.mlp                experts            143       145
+    model.language_model.layers.30.mlp.shared_experts channels             0      2048
+    model.language_model.layers.31.self_attn          heads                0        64
+    model.language_model.layers.31.mlp                experts            145       143
+    model.language_model.layers.31.mlp.shared_experts channels          2048         0
+    model.language_model.layers.32.self_attn          K-heads             32        32
+    model.language_model.layers.32.mlp                experts            145       143
+    model.language_model.layers.32.mlp.shared_experts channels          2048         0
+    model.language_model.layers.33.self_attn          K-heads             32        32
+    model.language_model.layers.33.mlp                experts            145       143
+    model.language_model.layers.33.mlp.shared_experts channels          2048         0
+    model.language_model.layers.34.self_attn          K-heads             32        32
+    model.language_model.layers.34.mlp                experts            145       143
+    model.language_model.layers.34.mlp.shared_experts channels          2048         0
+    model.language_model.layers.35.self_attn          heads               64         0
+    model.language_model.layers.35.mlp                experts            142       146
+    model.language_model.layers.35.mlp.shared_experts channels             0      2048
+    model.language_model.layers.36.self_attn          K-heads             32        32
+    model.language_model.layers.36.mlp                experts            143       145
+    model.language_model.layers.36.mlp.shared_experts channels             0      2048
+    model.language_model.layers.37.self_attn          K-heads             32        32
+    model.language_model.layers.37.mlp                experts            143       145
+    model.language_model.layers.37.mlp.shared_experts channels             0      2048
+    model.language_model.layers.38.self_attn          K-heads             32        32
+    model.language_model.layers.38.mlp                experts            143       145
+    model.language_model.layers.38.mlp.shared_experts channels             0      2048
+    model.language_model.layers.39.self_attn          heads                0        64
+    model.language_model.layers.39.mlp                experts            146       142
+    model.language_model.layers.39.mlp.shared_experts channels          2048         0
+    model.language_model.layers.40.self_attn          K-heads             32        32
+    model.language_model.layers.40.mlp                experts            146       142
+    model.language_model.layers.40.mlp.shared_experts channels          2048         0
+    model.language_model.layers.41.self_attn          K-heads             32        32
+    model.language_model.layers.41.mlp                experts            146       142
+    model.language_model.layers.41.mlp.shared_experts channels          2048         0
+    model.language_model.layers.42.self_attn          K-heads             32        32
+    model.language_model.layers.42.mlp                experts            146       142
+    model.language_model.layers.42.mlp.shared_experts channels          2048         0
+    model.language_model.layers.43.self_attn          heads               64         0
+    model.language_model.layers.43.mlp                experts            139       149
+    model.language_model.layers.43.mlp.shared_experts channels             0      2048
+    model.language_model.layers.44.self_attn          K-heads             31        33
+    model.language_model.layers.44.mlp                experts            139       149
+    model.language_model.layers.44.mlp.shared_experts channels             0      2048
+    lm_head                                           channels         75008     79872
+    ----------------------------------------------------------------------------------
+    Storage                                           GB               58.61     59.43
+    Overhead                                          GB                0.59      0.62
+    Total                                             GB               59.20     60.05
+Weightless GPU numerical check passed on cuda:0: 18 cases
+ -- Warmup: 18/18 passes in 6.01 s
+GLM vision: tower on cuda:0; at most 16 images and 6144 tokens per image; data: URLs only
+GLM ready: http://127.0.0.1:8014/v1 · context 392960 · cache 655360
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8014 (Press CTRL+C to quit)
+INFO:     127.0.0.1:41782 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50980 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-9b21808dc7a2421391cafca453530a8c","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"low","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":2.7602899936027825,"wall_ms":763.4016560041346,"engine_ttft_ms":332.84594101132825,"visible_ttft_ms":332.8987309942022,"completion_tokens":16,"http_queue_ms":8.868225035257638,"prompt_ms":142.66371726989746,"predicted_ms":344.93303298950195,"queue_ms":10.362625122070312,"prompt_n":29,"predicted_n":16,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":12,"acceptance":0.42857142857142855},"draft_n":28,"draft_n_accepted":12,"decode_tokens_per_second":46.38581541851621,"draft_acceptance":0.42857142857142855}
+INFO:     127.0.0.1:50992 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-6f87ab8594ae4dbe83e3f65669923e1c","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"low","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.7299340106546879,"wall_ms":362.05255397362635,"engine_ttft_ms":184.12523000733927,"visible_ttft_ms":184.18327998369932,"completion_tokens":16,"http_queue_ms":0.2836089697666466,"prompt_ms":111.88769340515137,"predicted_ms":233.99782180786133,"queue_ms":8.768081665039062,"prompt_n":29,"predicted_n":16,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":12,"acceptance":0.42857142857142855},"draft_n":28,"draft_n_accepted":12,"decode_tokens_per_second":68.37670486154272,"draft_acceptance":0.42857142857142855}
+INFO:     127.0.0.1:34862 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-233c4fe4afe04d309b30887924123f08","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"low","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.6393319820053875,"wall_ms":389.05525498557836,"engine_ttft_ms":210.76245699077845,"visible_ttft_ms":211.90791099797934,"completion_tokens":16,"http_queue_ms":0.1876860042102635,"prompt_ms":131.03532791137695,"predicted_ms":242.659330368042,"queue_ms":8.513689041137695,"prompt_n":29,"predicted_n":16,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":12,"acceptance":0.42857142857142855},"draft_n":28,"draft_n_accepted":12,"decode_tokens_per_second":65.93605931299967,"draft_acceptance":0.42857142857142855}
+INFO:     127.0.0.1:34874 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-01933c2c0c8c490f99f64a79d43da8b3","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"low","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.240826037246734,"wall_ms":358.73888403875753,"engine_ttft_ms":181.85536103555933,"visible_ttft_ms":181.90217000665143,"completion_tokens":16,"http_queue_ms":0.1207590103149414,"prompt_ms":110.76688766479492,"predicted_ms":232.6958179473877,"queue_ms":8.80289077758789,"prompt_n":29,"predicted_n":16,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":12,"acceptance":0.42857142857142855},"draft_n":28,"draft_n_accepted":12,"decode_tokens_per_second":68.75929331749995,"draft_acceptance":0.42857142857142855}
+INFO:     127.0.0.1:34878 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-543c1724c7e841cd8e0b7832661da8c6","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"high","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.1902200058102608,"wall_ms":355.5685059982352,"engine_ttft_ms":179.44583803182468,"visible_ttft_ms":179.48858899762854,"completion_tokens":17,"http_queue_ms":0.12454699026420712,"prompt_ms":109.53736305236816,"predicted_ms":231.40740394592285,"queue_ms":8.515357971191406,"prompt_n":29,"predicted_n":17,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":13,"acceptance":0.4642857142857143},"draft_n":28,"draft_n_accepted":13,"decode_tokens_per_second":73.4635094215598,"draft_acceptance":0.4642857142857143}
+INFO:     127.0.0.1:34890 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-ea6cc9f7378a46fa968044ca495b65d8","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"high","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.1914620408788323,"wall_ms":352.3157010204159,"engine_ttft_ms":178.41274599777535,"visible_ttft_ms":178.4750139922835,"completion_tokens":17,"http_queue_ms":0.12761197285726666,"prompt_ms":107.87558555603027,"predicted_ms":230.4222583770752,"queue_ms":8.27336311340332,"prompt_n":29,"predicted_n":17,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":4,"proposed":28,"accepted":13,"acceptance":0.4642857142857143},"draft_n":28,"draft_n_accepted":13,"decode_tokens_per_second":73.77759475033136,"draft_acceptance":0.4642857142857143}
+INFO:     127.0.0.1:34894 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-ebb9e504a1644fa586b8c4b3abc6327a","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.1628270149230957,"wall_ms":3079.404018993955,"engine_ttft_ms":180.1808619638905,"visible_ttft_ms":180.23329199058935,"completion_tokens":179,"http_queue_ms":0.12485700426623225,"prompt_ms":108.64830017089844,"predicted_ms":2956.2089443206787,"queue_ms":8.337020874023438,"prompt_n":29,"predicted_n":179,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":50,"proposed":350,"accepted":129,"acceptance":0.36857142857142855},"draft_n":350,"draft_n_accepted":129,"decode_tokens_per_second":60.55052378617752,"draft_acceptance":0.36857142857142855}
+INFO:     127.0.0.1:34906 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-836c761d3f46488b8c1093c815c43fea","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":1.1953389621339738,"wall_ms":3078.425090003293,"engine_ttft_ms":182.19618796138093,"visible_ttft_ms":182.24296701373532,"completion_tokens":179,"http_queue_ms":0.14420400839298964,"prompt_ms":112.152099609375,"predicted_ms":2950.6301879882812,"queue_ms":9.200572967529297,"prompt_n":29,"predicted_n":179,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":50,"proposed":350,"accepted":129,"acceptance":0.36857142857142855},"draft_n":350,"draft_n_accepted":129,"decode_tokens_per_second":60.66500665813391,"draft_acceptance":0.36857142857142855}
+INFO:     127.0.0.1:55294 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55308 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55292 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55300 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-669c1cb8513c41819ff7ee56ad406b54","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":3.0193920247256756,"wall_ms":1944.3534309975803,"engine_ttft_ms":702.1935640368611,"visible_ttft_ms":702.4710210389458,"completion_tokens":48,"http_queue_ms":9.51324898051098,"prompt_ms":112.05673217773438,"predicted_ms":1255.5532455444336,"queue_ms":246.57344818115234,"prompt_n":29,"predicted_n":48,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":9,"proposed":63,"accepted":39,"acceptance":0.6190476190476191},"draft_n":63,"draft_n_accepted":39,"decode_tokens_per_second":38.230158832639724,"draft_acceptance":0.6190476190476191}
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-15fec6d5f5db4f59abeb2c0611a8edbc","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":2.306759008206427,"wall_ms":2009.8309280001558,"engine_ttft_ms":185.25707797380164,"visible_ttft_ms":185.30689302133396,"completion_tokens":48,"http_queue_ms":0.17109501641243696,"prompt_ms":108.82282257080078,"predicted_ms":1813.7102127075195,"queue_ms":12.885093688964844,"prompt_n":29,"predicted_n":48,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":11,"proposed":77,"accepted":37,"acceptance":0.4805194805194805},"draft_n":77,"draft_n_accepted":37,"decode_tokens_per_second":26.46508778728508,"draft_acceptance":0.4805194805194805}
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-8a7f6df3d0454ab4b6cfa8b7a5258850","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":30,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":3.5339880269020796,"wall_ms":2008.9597640326247,"engine_ttft_ms":702.7291300473735,"visible_ttft_ms":702.9232790227979,"completion_tokens":50,"http_queue_ms":0.28461095644161105,"prompt_ms":337.5852108001709,"predicted_ms":1398.859977722168,"queue_ms":21.44312858581543,"prompt_n":30,"predicted_n":50,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":10,"proposed":70,"accepted":40,"acceptance":0.5714285714285714},"draft_n":70,"draft_n_accepted":40,"decode_tokens_per_second":35.74339161623413,"draft_acceptance":0.5714285714285714}
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-7f4e98a908fe47deac755ba893e09446","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":29,"reasoning_effort":"max","streaming":true,"images":0,"response_format":"json_object","outcome":"completed","finish_reason":"stop","error_type":null,"preparation_ms":4.334689001552761,"wall_ms":2646.5884629869834,"engine_ttft_ms":703.5152029711753,"visible_ttft_ms":703.7533649709076,"completion_tokens":92,"http_queue_ms":8.394645003136247,"prompt_ms":224.1508960723877,"predicted_ms":2100.7659435272217,"queue_ms":134.77063179016113,"prompt_n":29,"predicted_n":92,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":22,"proposed":154,"accepted":70,"acceptance":0.45454545454545453},"draft_n":154,"draft_n_accepted":70,"decode_tokens_per_second":43.79355076821668,"draft_acceptance":0.45454545454545453}
+INFO:     127.0.0.1:55314 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55316 - "GET /health HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-411ced16c224468c91eb2a785a3ffb95","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":23,"reasoning_effort":"low","streaming":true,"images":0,"outcome":"disconnected","finish_reason":"stop","error_type":null,"preparation_ms":0.3818350378423929,"wall_ms":878.1512189889327,"engine_ttft_ms":171.30222800187767,"visible_ttft_ms":171.34209402138367,"completion_tokens":36,"http_queue_ms":0.11870497837662697}
+INFO:     127.0.0.1:55316 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54334 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54366 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54380 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54396 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54410 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54424 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54424 - "GET /get_server_info HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54424 - "GET /version HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54424 - "GET /metrics HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54438 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54446 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-824c66e6672144ccb9315d924f16c383","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":20,"reasoning_effort":"low","streaming":true,"images":0,"outcome":"completed","finish_reason":"length","error_type":null,"preparation_ms":5.710310011636466,"wall_ms":717.1889200108126,"engine_ttft_ms":191.96794799063355,"visible_ttft_ms":192.02310300897807,"completion_tokens":64,"http_queue_ms":0.19095302559435368,"prompt_ms":109.03596878051758,"predicted_ms":586.5108966827393,"queue_ms":9.867668151855469,"prompt_n":20,"predicted_n":64,"source":"exllamav3","cached_tokens":0,"cache_n":0,"draft_stats":{"rounds":10,"proposed":70,"accepted":54,"acceptance":0.7714285714285715},"draft_n":70,"draft_n_accepted":54,"decode_tokens_per_second":109.11988227666204,"draft_acceptance":0.7714285714285715}
+INFO:     127.0.0.1:54448 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54458 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54462 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54478 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54798 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54812 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54814 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54818 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54832 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54834 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54842 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54850 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54860 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54866 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54872 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54874 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54876 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54878 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54350 - "GET /health HTTP/1.1" 200 OK
+Disk cache tier: generator error, writes disabled for the rest of this session
+GLM_REQUEST {"event":"glm_request","version":1,"id":"chatcmpl-a631440717634d8baf78382a4c349f4a","profile":{"digest":"f598e562c028005a7b51e4d8f7ad2821b354965b7af9303c63f5ecdd259db3d7","model":"GLM-5.3-Flash","recurrent_dtype":"fp16","weightless_alpha":2.0},"prompt_tokens":78,"reasoning_effort":"low","streaming":true,"images":0,"outcome":"cleanup_error","finish_reason":"stop","error_type":"RuntimeError","preparation_ms":0.6525680073536932,"wall_ms":8581.545275985263,"engine_ttft_ms":288.9105369686149,"visible_ttft_ms":290.0079399696551,"completion_tokens":361,"http_queue_ms":0.13611797476187348}
+Generation failed: RuntimeError('B2 paired retention lost shared native custody: Shared B2 native custody is uncertain')
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 144, in check_owner
+    return self._check_owner(transfer=transfer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 175, in _check_owner
+    raise RuntimeError("Native concurrency transfer is outside the persistent step owner")
+RuntimeError: Native concurrency transfer is outside the persistent step owner
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 444, in cancel
+    try:return await super().cancel(job)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_concurrent_async.py", line 49, in cancel
+    await super().cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_async.py", line 58, in cancel
+    await super().cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/async_generator.py", line 148, in cancel
+    self.generator.cancel(job.job)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 398, in cancel_hook
+    return paired.cancel(job, lambda owned_job: cancel(self, owned_job))
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 318, in cancel
+    result = native_cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 398, in <lambda>
+    return paired.cancel(job, lambda owned_job: cancel(self, owned_job))
+                                                ~~~~~~^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 624, in cancel
+    self.on_queue_drained()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 954, in on_queue_drained
+    self.flush_cache_to_disk(max_pages = self._idle_flush_budget())
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 841, in flush_cache_to_disk
+    queued["pages"], queued["more"] = self._queue_pages_to_disk(pages, max_pages)
+                                      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 890, in _queue_pages_to_disk
+    tier.store(page, pt.access_serial)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_persistent_tier.py", line 44, in store
+    self._check_owner()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_persistent_tier.py", line 39, in _check_owner
+    self.coordinator.check_owner(transfer=not self.coordinator.closing)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 113, in check_owner
+    self.concurrency.check_owner(transfer=transfer)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 147, in check_owner
+    self._ownership_error(error)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 136, in _ownership_error
+    paired._terminal(paired.failure or error)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 131, in _terminal
+    raise StopSharedGeneration('Shared B2 native custody is uncertain') from error
+glm_b2_native.StopSharedGeneration: Shared B2 native custody is uncertain
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_api.py", line 884, in stream
+    async for payload in results():
+        yield event(payload)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_api.py", line 879, in results
+    await cleanup.close()
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 63, in close
+    await _drain(self._task)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 18, in _drain
+    await asyncio.shield(future)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 48, in _finish
+    await _drain(operation)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 18, in _drain
+    await asyncio.shield(future)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_api.py", line 782, in cancel_and_report
+    await job.cancel()
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/async_generator.py", line 223, in cancel
+    await self.generator.cancel(self)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 450, in cancel
+    raise self.latch_shared(error) from error
+RuntimeError: B2 paired retention lost shared native custody: Shared B2 native custody is uncertain
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 144, in check_owner
+    return self._check_owner(transfer=transfer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 175, in _check_owner
+    raise RuntimeError("Native concurrency transfer is outside the persistent step owner")
+RuntimeError: Native concurrency transfer is outside the persistent step owner
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 444, in cancel
+    try:return await super().cancel(job)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_concurrent_async.py", line 49, in cancel
+    await super().cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_async.py", line 58, in cancel
+    await super().cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/async_generator.py", line 148, in cancel
+    self.generator.cancel(job.job)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 398, in cancel_hook
+    return paired.cancel(job, lambda owned_job: cancel(self, owned_job))
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 318, in cancel
+    result = native_cancel(job)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 398, in <lambda>
+    return paired.cancel(job, lambda owned_job: cancel(self, owned_job))
+                                                ~~~~~~^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 624, in cancel
+    self.on_queue_drained()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 954, in on_queue_drained
+    self.flush_cache_to_disk(max_pages = self._idle_flush_budget())
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 841, in flush_cache_to_disk
+    queued["pages"], queued["more"] = self._queue_pages_to_disk(pages, max_pages)
+                                      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/generator.py", line 890, in _queue_pages_to_disk
+    tier.store(page, pt.access_serial)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_persistent_tier.py", line 44, in store
+    self._check_owner()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_persistent_tier.py", line 39, in _check_owner
+    self.coordinator.check_owner(transfer=not self.coordinator.closing)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 113, in check_owner
+    self.concurrency.check_owner(transfer=transfer)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 147, in check_owner
+    self._ownership_error(error)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_native_concurrency.py", line 136, in _ownership_error
+    paired._terminal(paired.failure or error)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 131, in _terminal
+    raise StopSharedGeneration('Shared B2 native custody is uncertain') from error
+glm_b2_native.StopSharedGeneration: Shared B2 native custody is uncertain
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/h11_impl.py", line 403, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_body_limit.py", line 61, in __call__
+    await self.app(scope, replay, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data2/llm-models/glm53-exl3-trial/.venv/lib/python3.13/site-packages/starlette/routing.py", line 74, in app
+    await response(scope, receive, send)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 80, in __call__
+    await self.owned_cleanup.close()
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 63, in close
+    await _drain(self._task)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 21, in _drain
+    result = future.result()
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 48, in _finish
+    await _drain(operation)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_response_cleanup.py", line 18, in _drain
+    await asyncio.shield(future)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_api.py", line 782, in cancel_and_report
+    await job.cancel()
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/engine/exllamav3/generator/async_generator.py", line 223, in cancel
+    await self.generator.cancel(self)
+  File "/data2/llm-models/glm53-stream-usage-20261017/production/service/glm/glm_b2_native.py", line 450, in cancel
+    raise self.latch_shared(error) from error
+RuntimeError: B2 paired retention lost shared native custody: Shared B2 native custody is uncertain
+INFO:     127.0.0.1:54892 - "GET /health HTTP/1.1" 503 Service Unavailable

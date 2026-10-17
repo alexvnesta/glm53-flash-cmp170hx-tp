@@ -1,0 +1,289 @@
+--- a/exllamav3/exllamav3_ext/bindings.cpp
++++ b/exllamav3/exllamav3_ext/bindings.cpp
+@@ -77,6 +77,7 @@
+ 
+ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+ {
++    m.attr("decode_max_rows") = MAX_BSZN;
+     // Optional kernel families; Python checks these before taking a path that needs them. hgemm_f16acc is left
+     // out of ROCm builds (util/cuda_flags.py, HIP_EXCLUDED_SOURCES) with its bindings below: it serves GeForce
+     // parts, whose fp32-accumulate MMA runs at half rate, while RDNA's hgemm goes through the WMMA GEMM
+--- a/exllamav3/exllamav3_ext/graph.cu
++++ b/exllamav3/exllamav3_ext/graph.cu
+@@ -51,8 +51,12 @@
+ cudaStream_t Graph::capture_begin()
+ {
+     TORCH_CHECK(!capture_stream && !capture_active, "Graph: capture already active");
+-    // Surface an earlier asynchronous fault before starting a new capture.
+-    AT_CUDA_CHECK(cudaDeviceSynchronize());
++    // Do not wait for queued TP collectives here. Another rank may already
++    // be waiting for this rank to enqueue the next collective, especially
++    // when only one rank owns a shared-expert graph. Capture uses its own
++    // nonblocking stream; replay is enqueued on the original ordered stream.
++    // Check pending launch errors without a device-wide synchronization.
++    AT_CUDA_CHECK(cudaGetLastError());
+     // The thread's cuBLAS handle (and torch's workspace for it) must exist before capture: a slot
+     // warmed on another thread (the loader's) may capture on this one, and creating the handle
+     // allocates, which a thread-local capture forbids. A no-op once the handle exists
+--- a/exllamav3/exllamav3_ext/libtorch/mlp.h
++++ b/exllamav3/exllamav3_ext/libtorch/mlp.h
+@@ -8,7 +8,7 @@
+ #include "linear.h"
+ #include "../graph.cuh"
+ 
+-#define MAX_BSZN 8   // must match MAX_BSZN in blocksparse_mlp.h / BlockSparseMLP.py
++#define MAX_BSZN 32   // must match MAX_BSZN in blocksparse_mlp.h / BlockSparseMLP.py
+ 
+ // Gate and up projections run as one fused MGEMM when the pointer tables are given, otherwise
+ // as two separate GEMV/GEMM calls -- for num_tokens > 1 these go directly through exl3_gemm_gr
+--- a/exllamav3/exllamav3_ext/libtorch/mlp_bc.h
++++ b/exllamav3/exllamav3_ext/libtorch/mlp_bc.h
+@@ -37,7 +37,7 @@
+     py::arg("down"),
+     py::arg("act_limit")
+ )
+-.def("run_bszN", &BC_GatedMLP::run_bszN);
++.def("run_bszN", &BC_GatedMLP::run_bszN, py::call_guard<py::gil_scoped_release>());
+ 
+ py::class_<BC_MLP, std::shared_ptr<BC_MLP>>(m, "BC_MLP").def
+ (
+--- a/exllamav3/modules/block_sparse_mlp.py
++++ b/exllamav3/modules/block_sparse_mlp.py
+@@ -44,7 +44,7 @@
+ # Deterministic (slot + gather) accumulation for the fused kernel's outputs; EXL3_MOE_FUSED_DET=0
+ # restores the atomic adds
+ FUSED_DET = os.environ.get("EXL3_MOE_FUSED_DET", "1") != "0"
+-MAX_BSZN = 8  # must match MAX_BSZN in exllamav3_ext/libtorch/blocksparse_mlp.h
++MAX_BSZN = ext.decode_max_rows  # must match MAX_BSZN in exllamav3_ext/libtorch/blocksparse_mlp.h
+ 
+ @dataclass
+ class FusedBuffers:
+--- a/exllamav3/modules/mlp.py
++++ b/exllamav3/modules/mlp.py
+@@ -12,7 +12,7 @@
+ from .multilinear import MultiLinear
+ from ..util.tensor import g_tensor_cache
+ 
+-MAX_BSZN = 8  # must match MAX_BSZN in exllamav3_ext/libtorch/mlp.h and block_sparse_mlp.py
++MAX_BSZN = ext.decode_max_rows  # must match MAX_BSZN in exllamav3_ext/libtorch/mlp.h and block_sparse_mlp.py
+ 
+ 
+ def gated_act_slopes(activation_fn: str, g: torch.Tensor, u: torch.Tensor, act_limit: float):
+--- a/exllamav3/modules/transformer.py
++++ b/exllamav3/modules/transformer.py
+@@ -6,6 +6,14 @@
+ from . import Module, RMSNorm, LayerNorm, Attention, GatedDeltaNet, GatedMLP, MLP, BlockSparseMLP, Linear
+ from .hyperconnections import HyperConnection, hc_flush
+ from ..util import profile_opt
++
++# Optional GLP experiment; each spawned TP worker initializes its own reader.
++# Disabled leaves the model tensor operations and captures unchanged.
++import os
++_weightless_projector = None
++if os.environ.get("GLM_WEIGHTLESS_VECTOR"):
++    from ..util.weightless import make_projector
++    _weightless_projector = make_projector()
+ 
+ class TransformerBlock(Module):
+ 
+@@ -218,6 +226,8 @@
+         if self.layer_scalar_f is not None:
+             x *= self.layer_scalar_f
+ 
++        if _weightless_projector is not None:
++            x = _weightless_projector(self, x, params)
+         return to2(x, out_dtype, self.out_dtype)
+ 
+ 
+--- /dev/null
++++ b/exllamav3/util/weightless.py
+@@ -0,0 +1,162 @@
++"""Experimental rank-one GLP projector. Not imported by the production recipe.
++
++Original implementation of the public GLP v1 container/apply contract.
++GPU dependencies are imported only when an enabled target block executes.
++"""
++import hashlib
++import logging
++import math
++import os
++from pathlib import Path
++import re
++
++WIDTH = 4 * 4096
++LAYERS = 45
++HOOK = "residual_stream_post_layer"
++LOG = logging.getLogger(__name__)
++
++
++def load_vector(path, expected_sha256, base_revision):
++    import numpy as np
++    from gguf import GGUFReader, GGMLQuantizationType
++
++    path = Path(path)
++    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256 or ""):
++        raise ValueError("GLM_WEIGHTLESS_SHA256 must pin the complete vector file")
++    if not re.fullmatch(r"[0-9a-f]{40}", base_revision or ""):
++        raise ValueError("GLM_WEIGHTLESS_BASE_REVISION must pin the base checkpoint")
++    if path.stat().st_size > 16 * 1024 * 1024:
++        raise ValueError("GLP file exceeds the 16 MiB experiment limit")
++    data = path.read_bytes()
++    if data[:8] != b"GGUF\x03\x00\x00\x00":
++        raise ValueError("only little-endian GGUF version 3 is supported")
++    if hashlib.sha256(data).hexdigest() != expected_sha256:
++        raise ValueError("GLP file SHA256 mismatch")
++    # The reader maps the file. Check again after parsing to detect replacement.
++    reader = GGUFReader(str(path))
++    meta = {name: field.contents() for name, field in reader.fields.items()}
++    if any(name.startswith("dspark.") for name in meta):
++        raise ValueError("legacy dspark metadata requires re-export")
++    if meta.get("glp.mode") != "project":
++        raise ValueError("only explicit glp.mode=project is supported")
++    if meta.get("glp.spec_version") != 1:
++        raise ValueError("only GLP spec version 1 is supported")
++    if meta.get("glp.rank", 1) != 1 or any(
++        key in meta for key in ("glp.dir_scales", "glp.layer_scales")
++    ):
++        raise ValueError("rank-k and alpha scaling require a different reader")
++    if meta.get("glp.hook_point") != HOOK:
++        raise ValueError("GLP hook must be residual_stream_post_layer")
++    if meta.get("general.base_model.0.version") != base_revision:
++        raise ValueError("GLP base checkpoint revision mismatch")
++    if meta.get("glp.derived_at", HOOK) != HOOK:
++        LOG.warning("GLP direction was derived at %s, applied at %s", meta["glp.derived_at"], HOOK)
++    vectors = {}
++    for tensor in reader.tensors:
++        match = re.fullmatch(r"direction\.([1-9][0-9]*)", tensor.name)
++        if not match:
++            raise ValueError(f"unsupported tensor {tensor.name!r}")
++        layer = int(match[1])
++        if layer >= LAYERS or layer in vectors:
++            raise ValueError("duplicate or out-of-range GLM layer")
++        if tensor.tensor_type != GGMLQuantizationType.F32 or list(tensor.shape) != [WIDTH]:
++            raise ValueError("direction must be a 1D F32 HC-outer vector of width 16384")
++        value = np.asarray(tensor.data, dtype=np.float32).reshape(-1).copy()
++        norm = float(np.linalg.norm(value.astype(np.float64)))
++        if not np.isfinite(value).all() or not math.isfinite(norm) or norm == 0:
++            raise ValueError("direction must be finite and nonzero")
++        vectors[layer] = (value / norm).astype(np.float32)
++    if not vectors:
++        raise ValueError("GLP contains no directions")
++    declared = meta.get("glp.layer_ids_zero_based")
++    if declared is None or sorted(int(x.strip()) for x in declared.split(",")) != sorted(vectors):
++        raise ValueError("declared layers must match direction.N tensor names exactly")
++    if hashlib.sha256(path.read_bytes()).hexdigest() != expected_sha256:
++        raise ValueError("GLP changed during loading")
++    return vectors
++
++
++def make_projector(environ=None):
++    environ = os.environ if environ is None else environ
++    path = environ.get("GLM_WEIGHTLESS_VECTOR")
++    if not path:
++        return None
++    alpha = float(environ.get("GLM_WEIGHTLESS_ALPHA", "nan"))
++    if not math.isfinite(alpha) or not 0 <= alpha <= 2:
++        raise ValueError("explicit GLM_WEIGHTLESS_ALPHA in [0, 2] is required")
++    vectors = load_vector(path, environ.get("GLM_WEIGHTLESS_SHA256"),
++                          environ.get("GLM_WEIGHTLESS_BASE_REVISION"))
++    LOG.warning("EXPERIMENTAL Weightless GLP enabled: sha256=%s alpha=%s layers=%s",
++                environ["GLM_WEIGHTLESS_SHA256"], alpha, sorted(vectors))
++    return Projector(vectors, alpha, environ.get("GLM_WEIGHTLESS_VALIDATE") == "1",
++                     environ.get("GLM_WEIGHTLESS_RECEIPTS"))
++
++
++class Projector:
++    def __init__(self, vectors, alpha, require_validation=False, receipts=None):
++        self.vectors = vectors
++        self.alpha = alpha
++        self.devices = {}
++        self.require_validation = require_validation
++        self.validated = set()
++        self.receipts = receipts
++
++    def validate_device(self, device):
++        """Run bounded numerical checks once, during collective-free warmup."""
++        import json
++        import numpy as np
++        import torch
++        from exllamav3.util.weightless_kernel import project_in_place
++        rng = np.random.default_rng(20261014)
++        direction = next(iter(self.vectors.values()))
++        gpu_direction = torch.from_numpy(direction).to(device)
++        reference_direction = direction.astype(np.float64)
++        cases = []
++        for rows in (1, 2, 7, 8, 31, 64):
++            original = rng.standard_normal((rows, WIDTH), dtype=np.float32)
++            for alpha in (0.0, 1.0, 2.0):
++                value = torch.from_numpy(original.copy()).to(device)
++                project_in_place(value, gpu_direction, alpha)
++                actual = value.cpu().numpy()
++                reference = original.astype(np.float64)
++                reference -= alpha * (reference @ reference_direction)[:, None] * reference_direction
++                np.testing.assert_allclose(actual, reference, rtol=1e-4, atol=1e-4)
++                cases.append({"rows": rows, "alpha": alpha,
++                              "max_abs_error": float(np.max(np.abs(actual-reference)))})
++        self.validated.add(device)
++        if self.receipts:
++            root = Path(self.receipts)
++            root.mkdir(parents=True, exist_ok=True)
++            receipt = {"pid": os.getpid(), "device": str(device), "passed": True,
++                       "cases": cases, "operation": "rank_one_projection_fp32"}
++            (root / f"numerics-{device.index}-{os.getpid()}.json").write_text(json.dumps(receipt, indent=2)+'\n')
++        LOG.warning("Weightless GPU numerical check passed on %s: %d cases", device, len(cases))
++
++    def __call__(self, block, x, params):
++        # DFlash and vision blocks do not have the target mHC architecture.
++        if self.alpha == 0 or block.attn_hc is None or block.layer_idx not in self.vectors:
++            return x
++        if params.get("layer_instance", 0) != 0:
++            return x
++        if "capture" in params or "quant_preserve" in params:
++            raise ValueError("steering is not supported during model conversion")
++        import torch
++        if (x.ndim != 4 or tuple(x.shape[-2:]) != (4, 4096)
++                or x.dtype != torch.float32 or not x.is_contiguous() or x.device.type != "cuda"):
++            raise ValueError("steering requires CUDA contiguous FP32 [B,S,4,4096] residuals")
++        if self.require_validation and x.device not in self.validated:
++            if "backend" in params and not params.get("tp_warmup"):
++                raise RuntimeError("Weightless numerical validation must precede TP serving")
++            self.validate_device(x.device)
++        # Stock TP/export paths already materialize the residual. This also
++        # handles the engine's deferred mHC path if it is enabled in the future.
++        from exllamav3.modules.hyperconnections import hc_flush
++        hc_flush(params)
++        key = (block.layer_idx, x.device)
++        direction = self.devices.get(key)
++        if direction is None:
++            direction = torch.from_numpy(self.vectors[block.layer_idx]).to(x.device)
++            self.devices[key] = direction
++        from exllamav3.util.weightless_kernel import project_in_place
++        project_in_place(x, direction, self.alpha)
++        return x
+--- /dev/null
++++ b/exllamav3/util/weightless_kernel.py
+@@ -0,0 +1,24 @@
++"""One fused FP32 rank-one projection launch per selected target layer.
++
++No full-sized projection temporary or host synchronization in the steady path.
++Requires separate numerical/performance qualification on CMP170HX.
++"""
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _project(X, D, alpha: tl.constexpr, WIDTH: tl.constexpr):
++    row = tl.program_id(0)
++    col = tl.arange(0, WIDTH)
++    value = tl.load(X + row * WIDTH + col)
++    direction = tl.load(D + col)
++    coefficient = tl.sum(value * direction, axis=0)
++    tl.store(X + row * WIDTH + col, value - alpha * coefficient * direction)
++
++
++def project_in_place(x, direction, alpha):
++    width = 16384
++    rows = x.numel() // width
++    if rows:
++        _project[(rows,)](x, direction, alpha, WIDTH=width, num_warps=16)

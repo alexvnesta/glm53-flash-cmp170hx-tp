@@ -91,6 +91,7 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.jobs = []
         self.text = 'thinking</think>{"code":"def add(a,b): return a+b"}'
         self.finish = "stop"
+        self.events = None
         owner = self
 
         class AsyncJob:
@@ -103,6 +104,10 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
 
             async def __aiter__(self):
                 await asyncio.sleep(0)
+                if owner.events is not None:
+                    for event in owner.events:
+                        yield {"stage": "streaming", "eos": False, **event}
+                    return
                 yield {"stage": "streaming", "text": owner.text, "eos": True,
                        "eos_reason": "max_new_tokens" if owner.finish == "length" else "stop",
                        "new_tokens": 37, "time_generate": .1, "time_prefill": .01}
@@ -148,6 +153,57 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         response = await self.post(response_format={"type": "text"})
         self.assertEqual(response.json()["choices"][0]["message"]["content"], '```json\n{}\n```')
         self.assertNotIn("filters", self.jobs[-1].kwargs)
+
+    async def test_continuous_usage_counts_native_tokens_once_across_split_channels(self):
+        self.events = [
+            {"text": "thinking", "token_ids": NS(numel=lambda: 3)},
+            {"text": "</think>{\"x\":1}", "token_ids": NS(numel=lambda: 5)},
+            {"text": "", "eos": True, "new_tokens": 9, "eos_reason": "stop"},
+        ]
+        response = await self.post(stream=True, stream_options={
+            "include_usage": True, "continuous_usage_stats": True})
+        events = [json.loads(line[6:]) for line in response.text.splitlines()
+                  if line.startswith("data: {")]
+        self.assertFalse(any("error" in e for e in events), response.text)
+        counts = [e["usage"]["completion_tokens"] for e in events]
+        self.assertEqual(counts, sorted(counts))
+        self.assertEqual(set(counts), {0, 3, 8, 9})
+        self.assertEqual(counts[-1], 9)
+        self.assertTrue(all(e["usage"]["total_tokens"] == e["usage"]["prompt_tokens"] + n
+                            for e, n in zip(events, counts)))
+        self.assertLess(sum(bool(e.get("choices")) for e in events), counts[-1])
+        self.assertTrue(self.jobs[-1].cancelled)
+        self.assertFalse(self.lock.locked())
+
+    async def test_continuous_usage_counts_once_when_one_event_feeds_both_channels(self):
+        # One engine event whose text crosses </think> yields a reasoning delta AND a content
+        # delta; its native tokens must still be counted once, not once per delta.
+        self.events = [
+            {"text": "ab</think>{\"x\"", "token_ids": NS(numel=lambda: 4)},
+            {"text": ":1}", "token_ids": NS(numel=lambda: 2)},
+            {"text": "", "eos": True, "new_tokens": 7, "eos_reason": "stop"},
+        ]
+        response = await self.post(stream=True, stream_options={
+            "include_usage": True, "continuous_usage_stats": True})
+        events = [json.loads(line[6:]) for line in response.text.splitlines()
+                  if line.startswith("data: {")]
+        self.assertFalse(any("error" in e for e in events), response.text)
+        deltas = [c["delta"] for e in events for c in e.get("choices", []) if c.get("delta")]
+        self.assertIn({"reasoning_content": "ab"}, deltas)
+        self.assertIn({"content": "{\"x\""}, deltas)
+        counts = [e["usage"]["completion_tokens"] for e in events]
+        self.assertEqual(counts, sorted(counts))
+        self.assertEqual(set(counts), {0, 4, 6, 7})
+
+    async def test_continuous_usage_requires_include_usage_and_keeps_legacy_final_only(self):
+        for options in ({"continuous_usage_stats": True}, {"include_usage": True}, {}):
+            response = await self.post(stream=True, stream_options=options)
+            events = [json.loads(line[6:]) for line in response.text.splitlines()
+                      if line.startswith("data: {")]
+            usage_events = [e for e in events if "usage" in e]
+            self.assertEqual(len(usage_events), int(bool(options.get("include_usage"))))
+            if usage_events:
+                self.assertEqual(usage_events[0]["usage"]["completion_tokens"], 37)
 
     async def test_invalid_model_output_is_an_error_with_cleanup_not_silently_repaired(self):
         self.text = 'thinking</think>```json\n{}\n```'

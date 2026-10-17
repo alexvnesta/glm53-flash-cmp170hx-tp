@@ -1,0 +1,25 @@
+{"t": 1792242190.5727963, "event": "benchmark start engine=openai_proxy"}
+{"t": 1792242190.5728567, "event": "startup server=http://127.0.0.1:8014 model=GLM-5.3-Flash-low"}
+{"t": 1792242190.572886, "event": "startup decode concurrency=1,2,4 contexts=0"}
+{"t": 1792242190.5729046, "event": "startup NVIDIA P2P override: not effective: missing=ForceP2P,RMForceP2PType,GrdmaPciTopoCheckOverride; mismatched=RMPcieP2PType"}
+{"t": 1792242190.5729227, "event": "startup KV cache budget manual: 655,360 tokens"}
+{"t": 1792242190.5729387, "event": "startup engine OpenAI-compatible proxy models=['GLM-5.3-Flash', 'GLM-5.3-Flash-low', 'GLM-5.3-Flash-high', 'GLM-5.3-Flash-max']"}
+{"t": 1792242190.5729542, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792242190.5729747, "event": "startup model context length: 392,960 tokens"}
+{"t": 1792242190.57299, "event": "startup prefill tests: skipped"}
+{"t": 1792242190.5730047, "event": "startup startup preparation done"}
+{"t": 1792242190.57302, "event": "startup WARNING: Only OpenAI /v1 endpoints appear reachable (HTTP 404 on /metrics); engine-specific probes and Prometheus diagnostics are disabled. Using OpenAI-stream-only measurement."}
+{"t": 1792242190.5733895, "event": "hardware monitor interval=2s"}
+{"t": 1792242190.5788014, "event": "decode warmup start"}
+{"t": 1792242191.441104, "event": "decode warmup start C=1 ctx=0 3s"}
+{"t": 1792242191.4467967, "event": "cell start C=1 ctx=0"}
+{"t": 1792242196.9626043, "event": "ready C=1 ctx=0 metrics_unavailable, active_streams=1/1, stable=3.0s"}
+{"t": 1792242200.0105388, "event": "cell done C=1 ctx=0 35.5 tok/s"}
+{"t": 1792242200.010726, "event": "cell end C=1 ctx=0 tps=35.5"}
+{"t": 1792242200.0109885, "event": "decode warmup done C=1 ctx=0"}
+{"t": 1792242202.0195038, "event": "cell start C=1 ctx=0"}
+{"t": 1792242214.33098, "event": "measure start C=1 ctx=0 request-count=4"}
+{"t": 1792242262.607584, "event": "cell done C=1 ctx=0 42.4 tok/s"}
+{"t": 1792242262.6078305, "event": "cell end C=1 ctx=0 tps=42.4"}
+{"t": 1792242264.6164205, "event": "cell start C=2 ctx=0"}
+{"t": 1792242276.6722107, "event": "measure start C=2 ctx=0 request-count=4"}
