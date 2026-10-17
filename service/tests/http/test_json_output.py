@@ -224,6 +224,18 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(seen[0]["clear_thinking"], False)
         self.assertNotIn("clear_thinking", seen[1])
 
+    async def test_tokenize_counts_a_chat_with_the_switch_it_will_be_rendered_with(self):
+        seen = []
+        self.api.runtime["template"] = NS(render=lambda **kwargs: seen.append(kwargs) or "<think>")
+        self.api.runtime["vision"] = NS(rewrite=lambda messages: (messages, []))
+        body = {"messages": [{"role": "user", "content": "Return JSON."}],
+                "chat_template_kwargs": {"clear_thinking": False}}
+        response = await self.client.post("/tokenize", json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIs(seen[-1]["clear_thinking"], False)
+        response = await self.client.post("/tokenize", json={**body, "chat_template_kwargs": {"x": 1}})
+        self.assertEqual(response.status_code, 400, response.text)
+
     async def test_an_unknown_or_loose_template_switch_is_refused_before_a_job(self):
         for switches in ({"enable_thinking": False}, {"clear_thinking": "false"}, {"clear_thinking": 0}):
             response = await self.post(response_format={"type": "text"}, chat_template_kwargs=switches)
