@@ -85,8 +85,15 @@ def main():
                 if result.aggregate_source == "openai_completed_usage":
                     events = [(at, agent, count) for at, agent, count in current["completed_streams"]
                               if at >= state.cell_measurement_start]
+                # The JSON field rounds seconds to 6 decimals. Recover the
+                # original denominator from the untouched aggregate formula;
+                # rounding it can exclude the final increment by <0.5 us.
+                exact_seconds = result.client_output_tokens / result.aggregate_tps
+                if abs(exact_seconds - result.measurement_seconds) > .00000051:
+                    raise ValueError("Unexpected upstream throughput denominator")
+                audit["reported_measurement_seconds_rounded"] = result.measurement_seconds
                 audit.update(summarize(events, state.cell_measurement_start,
-                                       result.measurement_seconds, result.concurrency, result.client_output_tokens))
+                                       exact_seconds, result.concurrency, result.client_output_tokens))
                 audit["aggregate_tokens_per_second"] = result.aggregate_tps
             else:
                 audit["invalid_reason"] = "Exact OpenAI usage unavailable"

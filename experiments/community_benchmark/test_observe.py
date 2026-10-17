@@ -18,6 +18,14 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(events, 1.5, 2, 2, 15)
 
+    def test_rounding_a_window_cannot_remove_its_last_token(self):
+        seconds = 29.1234564
+        events = [(seconds - .0000001, 0, 1)]
+        with self.assertRaises(ValueError):
+            summarize(events, 0, round(seconds, 6), 1, 1)
+        exact_seconds = 1 / (1 / seconds)
+        self.assertEqual(summarize(events, 0, exact_seconds, 1, 1)["completion_tokens"], [1])
+
 
 if __name__ == "__main__":
     unittest.main()
