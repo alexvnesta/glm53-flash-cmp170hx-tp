@@ -52,7 +52,10 @@ def main():
     sys.modules[spec.name] = bench
     spec.loader.exec_module(bench)
     original_stream, original_cell = bench.stream_one_request, bench.run_one_cell
-    stream_signature, cell_signature = inspect.signature(original_stream), inspect.signature(original_cell)
+    stream_signature = inspect.signature(original_stream)
+    # Upstream wraps run_one_cell in an event-emission *args/**kwargs shim.
+    # Bind against its measured implementation while still calling the shim.
+    cell_signature = inspect.signature(bench._run_one_cell_measured)
     current = {}
 
     async def stream(*args, **kwargs):
@@ -74,7 +77,9 @@ def main():
             result = await original_cell(*args, **kwargs)
             state = bound.arguments["state"]
             audit = {"concurrency": result.concurrency, "context_tokens": result.context_tokens,
-                     "benchmark_mode": result.benchmark_mode, "aggregate_source": result.aggregate_source}
+                     "benchmark_mode": result.benchmark_mode, "aggregate_source": result.aggregate_source,
+                     "requested_duration": bound.arguments["duration"],
+                     "request_count_target": result.request_count_target}
             if result.aggregate_source in ("openai_continuous_usage", "openai_completed_usage"):
                 events = current["events"]
                 if result.aggregate_source == "openai_completed_usage":
