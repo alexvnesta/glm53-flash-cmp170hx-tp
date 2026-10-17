@@ -743,8 +743,7 @@ async def complete(body, request, chat):
         paired = getattr(runtime["generator"].generator, "_glm_b2_retention", None)
         shared = None if paired is None else paired.shared
         prepared = (shared.prepared_chat(ids, messages, tools, body.reasoning_effort, prompt,
-                        template=runtime["template"], tokenizer=runtime["tokenizer"],
-                        renderer=lambda *a: render_prompt(*a, clear_thinking=template_clear_thinking(body)))
+                        template=runtime["template"], tokenizer=runtime["tokenizer"], renderer=render_prompt)
                     if chat and shared is not None and not images else nullcontext())
         if images and shared is not None:
             # Image jobs take the ordinary paired-retention path until the shared prefix is qualified with them.

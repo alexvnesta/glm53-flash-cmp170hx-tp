@@ -1,5 +1,6 @@
 """JSON contract, filter ownership and real ASGI responses without a model."""
 import asyncio
+import contextlib
 import json
 import sys
 from types import SimpleNamespace as NS
@@ -235,6 +236,26 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(seen[-1]["clear_thinking"], False)
         response = await self.client.post("/tokenize", json={**body, "chat_template_kwargs": {"x": 1}})
         self.assertEqual(response.status_code, 400, response.text)
+
+    async def test_the_shared_prefix_gets_the_exact_bound_renderer_with_or_without_the_switch(self):
+        """The shared prefix binds (template, tokenizer, renderer) at startup and refuses any other
+        object, so a wrapped renderer failed every chat request in production (2026-10-17). Its
+        boundary is checked against the request's actual tokens, so the switch need not reach it."""
+        api, calls = self.api, []
+
+        class Shared:
+            @contextlib.contextmanager
+            def prepared_chat(self, ids, messages, tools, effort, prompt, *, template, tokenizer, renderer):
+                if template is not api.runtime["template"] or renderer is not api.render_prompt:
+                    raise ValueError("One exact bound API render scope required")
+                calls.append(effort)
+                yield
+
+        api.runtime["generator"] = NS(error=None, generator=NS(_glm_b2_retention=NS(shared=Shared())))
+        for switches in (None, {"clear_thinking": False}):
+            response = await self.post(response_format={"type": "text"}, chat_template_kwargs=switches)
+            self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(calls), 2)
 
     async def test_an_unknown_or_loose_template_switch_is_refused_before_a_job(self):
         for switches in ({"enable_thinking": False}, {"clear_thinking": "false"}, {"clear_thinking": 0}):
