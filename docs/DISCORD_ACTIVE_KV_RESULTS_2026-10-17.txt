@@ -1,0 +1,39 @@
+GLM-5.3-Flash: four 256K contexts on 2× CMP170HX
+
+The active RAM KV prototype works: four independent 262,144-token inputs,
+all four decoding together, with Q8 precision unchanged. All eight long-context
+marker/JSON checks passed across low and high effort.
+
+Same short benchmark, 24 tasks per row:
+
+| Setup | Effort | Aggregate tok/s | Actual agent 1 / 2 / 3 / 4 tok/s | Finish |
+|---|---|---:|---|---:|
+| GPU cache | Low | 155.0 | 41.1 / 37.4 / 36.1 / 40.3 | 38.9s |
+| Active RAM KV | Low | 128.4 | 30.2 / 30.9 / 27.7 / 39.6 | 43.2s |
+| GPU cache | High | 143.1 | 45.8 / 22.7 / 37.3 / 37.4 | 41.6s |
+| Active RAM KV | High | 120.7 | 33.3 / 20.7 / 28.3 / 38.5 | 48.9s |
+
+All 96 scored short tasks passed. Rates include reasoning and use the same
+whole-run wall time for every agent. The RAM setup costs 16–17% throughput on
+this workload; output lengths also differ, so seconds alone tell less.
+
+At 256K input tokens EACH:
+
+| Effort | Aggregate decode tok/s | Actual agent 1 / 2 / 3 / 4 decode tok/s | Cold finish |
+|---|---:|---|---:|
+| Low | 93.5 | 24.3 / 23.3 / 23.1 / 22.7 | 12m 12s |
+| High | 104.8 | 26.1 / 26.6 / 25.5 / 26.5 | 12m 18s |
+
+The long-context decode rates cover common 10.1s / 16.1s intervals with all
+four agents generating. Cold prefill dominates the total finish time; including
+it, aggregate completion delivery is 1.39 / 2.37 tok/s. High effort produced
+more reasoning tokens, so its higher decode rate is not a general speed claim.
+
+This uses 6.62 GiB of active RAM backing, with the sparse index on GPU.
+It is a fixed RAM-backed prototype, not automatic hot/cold paging. A 32K
+output reservation per agent fits; four full 32K answers were not generated.
+The GPU-only larger-pool control ran out of VRAM during warmup. This does not
+rule out other GPU-only configurations. The current GPU setup stays the default.
+
+Methods, evidence and limits:
+https://github.com/alexvnesta/glm53-flash-cmp170hx-tp/blob/main/docs/ACTIVE_KV_OFFLOAD_2026-10-17.md

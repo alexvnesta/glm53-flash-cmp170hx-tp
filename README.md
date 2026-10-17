@@ -77,6 +77,14 @@ with the retained 32-row kernel**, after the runtime qualification and another
 router-facing canary/restart. The report gives aggregate/per-agent tok/s,
 completion time and output lengths for both variants at every tested effort.
 
+The [active RAM KV investigation](docs/ACTIVE_KV_OFFLOAD_2026-10-17.md)
+demonstrates **four independent 256K inputs** with Q8 latent storage backed by
+system RAM. Four-agent decode measured **93.5 tok/s low / 104.8 tok/s high**
+after roughly 12 minutes of cold prefill; the unchanged short benchmark costs
+16–17% throughput versus the current GPU pool. This is a static backing
+prototype, with per-agent rates and exact qualification limits in the report.
+Production retains the qualified GPU-resident active cache.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

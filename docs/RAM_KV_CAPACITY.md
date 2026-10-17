@@ -22,7 +22,7 @@ pages (8,589,385,728 bytes), roughly 1.16 million token-equivalents of inactive
 pages. Page and checkpoint eviction, shared-prefix reuse and simultaneous
 sessions determine useful retention. The recurrent-state budget is separate.
 
-## What fits while four agents decode
+## Current GPU pool while four agents decode
 
 | Four independent input contexts | Input total | Within the nominal GPU pool? |
 |---|---:|---|
@@ -67,3 +67,11 @@ also describes completed-block prefix caching and promotion back to GPU. A
 reported GPU-plus-CPU cache pool alone does not establish that oversized active
 contexts decode concurrently, or establish performance on this two-card TP
 configuration.
+
+The later [active RAM KV investigation](ACTIVE_KV_OFFLOAD_2026-10-17.md)
+demonstrates four independent 262,144-token inputs in an isolated allocator
+variant, using 6.62 GiB of fixed active host backing for Q8 latents/scales and
+retaining index planes on GPU. It reports aggregate and actual per-agent tok/s,
+cold-prefill time, correctness and the 16–17% short-task throughput cost.
+This is an experiment with static backing; the production behavior and budgets
+described above remain unchanged.
