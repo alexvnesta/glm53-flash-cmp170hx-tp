@@ -1,9 +1,12 @@
 """Validate the retained 2026-10-17 community runs and package their unchanged metrics.
 
 Usage: python experiments/community_benchmark/package.py
-Reads results/2026-10-17/runs/ (copied unchanged from the server) and writes the
-per-effort envelopes, summary.json and docs/COMMUNITY_BENCHMARK_2026-10-17.md.
-Every accepted cell must reconcile its per-agent tokens with the upstream total.
+Reads results/2026-10-17/runs/ (copied unchanged from the server) and the serving
+/health captured after the deploy (controller/serving-health-after-deploy.json), and
+writes the per-effort envelopes, summary.json and docs/COMMUNITY_BENCHMARK_2026-10-17.md.
+Every accepted cell must reconcile its per-agent tokens with the upstream total, and every
+accepted group must have stayed under the CPU-pressure gate. The validation counts in the
+doc are transcribed from the qualification logs, not re-run here.
 """
 import hashlib
 import json
@@ -12,6 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 DEST = REPO / 'experiments/community_benchmark/results/2026-10-17'
 RUNS = DEST / 'runs'
+HEALTH = DEST / 'controller/serving-health-after-deploy.json'
 DOC = REPO / 'docs/COMMUNITY_BENCHMARK_2026-10-17.md'
 EFFORTS = ('low', 'high', 'max')
 CONTEXTS = (0, 32768, 131072)
@@ -56,6 +60,8 @@ def collect():
             assert cell['num_errors'] == 0 and cell['aggregate_tps'] > 0 and not cell['warmup_timed_out']
             if receipt['finite']:
                 assert cell['completed_request_count'] == 4 and cell['client_output_tokens'] == 2048
+        # run_guarded.py yields a group on CPU PSI avg10 >= 2; assert it rather than trust it.
+        assert max(s['psi_cpu_avg10'] for s in receipt['health_samples']) < 2, receipt['label']
         groups[receipt['label']] = {'receipt': receipt, 'folder': folder, 'report': report, 'audits': audits}
     assert len(groups) == 12, f'Benchmark campaign is incomplete: {sorted(groups)}'
     return groups, excluded
@@ -72,6 +78,8 @@ def envelope(effort, groups):
             'label': receipt['label'], 'raw_file': raw_path.relative_to(DEST).as_posix(),
             'sha256': hashlib.sha256(raw_path.read_bytes()).hexdigest(),
             'started': receipt['started'], 'finished': receipt['finished'], 'command': receipt['command'],
+            # Acceptance implies zero: run_guarded.py rejects a group whose window has any
+            # POST in the switcher journal. The receipt keeps no separate count.
             'gates': {'public_router_posts': 0,
                       'cpu_psi_avg10_max': max(s['psi_cpu_avg10'] for s in samples),
                       'observed_efforts': sorted({e for s in samples for e in s['efforts']}),
@@ -125,16 +133,36 @@ def rate(rows, effort, ctx, count):
     return row
 
 
-def document(sustained, finite_rows, window):
+def serving(health):
+    """The header facts, read from the /health the deploy captured, never typed."""
+    assert health['status'] == 'ok' and health['profile_digest'] == PROFILE
+    steering = health['weightless']
+    assert steering['enabled'] and steering['mode'] == 'project'
+    return (f"GLM-5.3-Flash EXL3 3.05bpw, Weightless GLP-44 alpha {steering['alpha']:g} on {steering['layers']} "
+            f"layers, TP2, {health['max_active_sequences']} native slots, {health['recurrent_state_dtype'].upper()} "
+            f"recurrent state, {health['cache_format']} GPU KV pool {health['cache_tokens']:,}, per-request cap "
+            f"{health['context_cap']:,}. Service profile digest `{health['profile_digest']}`; native SHA-256 "
+            f"`{health['native_extension']['sha256']}`. Active RAM KV paging is disabled.")
+
+
+def long_context_note(sustained):
+    """How the single-agent long-context cells compare with the short prompt, computed."""
+    ratios = [rate(sustained, e, ctx, 1)['aggregate_tps'] / rate(sustained, e, 0, 1)['aggregate_tps']
+              for e in EFFORTS for ctx in CONTEXTS[1:]]
+    worst = (1 - min(ratios)) * 100
+    return (f'- At one agent, every nominal 32K/128K cell measured within {worst:.1f}% of the short prompt or '
+            f'faster ({sum(r > 1 for r in ratios)} of {len(ratios)} faster). The tool ')
+
+
+def document(sustained, finite_rows, window, health, psi_max):
     four = {e: rate(sustained, e, 0, 4)['aggregate_tps'] for e in EFFORTS}
     text = [
         '# GLM community benchmark on two CMP 170HX cards', '',
-        f'October 17, 2026, {window} UTC (accepted groups). GLM-5.3-Flash EXL3 3.05bpw, Weightless GLP-44 alpha2, TP2, four native '
-        'slots, FP16 recurrent state, Q8 GPU KV pool 655,360, per-request cap 392,960. Service profile digest '
-        f'`{PROFILE}`; native SHA-256 `f0a25e2c707748eed0679d7e58f92907ebd6eea4e3b2b1605037382baeb2d046`. '
-        'Active RAM KV paging is disabled.', '',
-        'The unmodified [llm-inference-bench v0.8.0](https://github.com/local-inference-lab/llm-inference-bench/tree/'
-        + TOOL_COMMIT + ') supplies its original prose-generation workload. Each sustained cell measures 30 seconds '
+        f'October 17, 2026, {window} UTC (accepted groups). ' + serving(health), '',
+        'The [llm-inference-bench v0.8.0](https://github.com/local-inference-lab/llm-inference-bench/tree/'
+        + TOOL_COMMIT + ') source, unmodified and run under `observe.py` (which wraps two of its functions and '
+        'proxies its shared counters to record each agent), supplies its original prose-generation workload. '
+        'Each sustained cell measures 30 seconds '
         'after readiness warmup, temperature zero, max 2,048 completion tokens per request, with immediate backfill '
         'and ignore-EOS enabled. Effort is selected with the API model aliases. Context 0 means the short prompt, not '
         'literally zero input tokens. The requested 32K/128K sizes are nominal: exact targeting fell back to the '
@@ -157,11 +185,11 @@ def document(sustained, finite_rows, window):
         '- Each cell is one 30-second run with no repeats. Differences between efforts at the same context and '
         'agent count are not separated from run-to-run variation. With ignore-EOS, a request does not stop when '
         'its answer ends, so effort changes what the model writes, not how many tokens it generates.',
-        '- At one agent, the nominal 32K/128K cells measured the same as or faster than the short prompt. The tool '
+        long_context_note(sustained) +
         "received no draft-acceptance statistics from this server (its speculative-decoding fields read zero), so "
         'this campaign cannot say why.',
-        '- The server stayed available to other clients. Accepted groups observed no public router POSTs and CPU '
-        'PSI avg10 below 2%. Attempts interrupted by a public client or failed by the observer remain excluded, '
+        '- The server stayed available to other clients. Every accepted group saw no public router POST (the '
+        f'controller rejects a group that does) and CPU PSI avg10 at most {psi_max:.2f}%. Attempts interrupted by a public client or failed by the observer remain excluded, '
         'and their run folders are retained.', '']
     for ctx in CONTEXTS:
         text += ['## ' + ('Short prompt' if ctx == 0 else f'{ctx // 1024}K nominal input context'), '',
@@ -192,12 +220,13 @@ def document(sustained, finite_rows, window):
              'max-effort JSON answers, and drained a stream cancelled after 1,024 generated tokens. Native '
              'cancellation now performs any last-job KV/disk flush on the existing GPU step worker under its '
              'ownership guard. Async queue notifications stay on the HTTP loop.', '',
-             'The first duration smoke exposed that pre-existing cancellation ownership fault and is excluded. A '
+             'The first duration smoke (`runs/smoke-attempt1`) ended in an HTTP 503 from that pre-existing '
+             'cancellation ownership fault (server log: `controller/smoke-backend-failure.log`) and is excluded. A '
              'deployment path-comparison mistake caused one unnecessary rollback before the reporting fix was '
              'activated. Early observer trials exposed the upstream event wrapper and a sub-microsecond '
              'rounded-window boundary; those trials are excluded. No failed row was repaired into an accepted score.',
              '',
-             'Validation: 47 HTTP tests, 68 server concurrency CPU tests (one skipped; CUDA uninitialized), two '
+             'Validation, as recorded in the qualification logs and not re-run by this script: 47 HTTP tests, 68 server concurrency CPU tests (one skipped; CUDA uninitialized), two '
              'observer tests, source/lifecycle checks, full 972-file profile reproduction, live cancellation/JSON '
              'checks and the completed community campaign. Native kernels were not rebuilt or changed by the '
              'reporting/cancellation fixes.', '',
@@ -220,7 +249,8 @@ def main():
                                   'excluded_attempts': excluded})
     receipts = [g['receipt'] for g in groups.values()]
     window = (min(r['started'] for r in receipts)[11:16] + '–' + max(r['finished'] for r in receipts)[11:16])
-    DOC.write_text(document(sustained, finite_rows, window))
+    psi_max = max(s['psi_cpu_avg10'] for r in receipts for s in r['health_samples'])
+    DOC.write_text(document(sustained, finite_rows, window, json.loads(HEALTH.read_text()), psi_max))
     print(f'Packaged {len(sustained)} sustained cells and {len(finite_rows)} finite cells; '
           f'{len(excluded)} excluded attempts retained')
 

@@ -175,6 +175,26 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.jobs[-1].cancelled)
         self.assertFalse(self.lock.locked())
 
+    async def test_continuous_usage_counts_once_when_one_event_feeds_both_channels(self):
+        # One engine event whose text crosses </think> yields a reasoning delta AND a content
+        # delta; its native tokens must still be counted once, not once per delta.
+        self.events = [
+            {"text": "ab</think>{\"x\"", "token_ids": NS(numel=lambda: 4)},
+            {"text": ":1}", "token_ids": NS(numel=lambda: 2)},
+            {"text": "", "eos": True, "new_tokens": 7, "eos_reason": "stop"},
+        ]
+        response = await self.post(stream=True, stream_options={
+            "include_usage": True, "continuous_usage_stats": True})
+        events = [json.loads(line[6:]) for line in response.text.splitlines()
+                  if line.startswith("data: {")]
+        self.assertFalse(any("error" in e for e in events), response.text)
+        deltas = [c["delta"] for e in events for c in e.get("choices", []) if c.get("delta")]
+        self.assertIn({"reasoning_content": "ab"}, deltas)
+        self.assertIn({"content": "{\"x\""}, deltas)
+        counts = [e["usage"]["completion_tokens"] for e in events]
+        self.assertEqual(counts, sorted(counts))
+        self.assertEqual(set(counts), {0, 4, 6, 7})
+
     async def test_continuous_usage_requires_include_usage_and_keeps_legacy_final_only(self):
         for options in ({"continuous_usage_stats": True}, {"include_usage": True}, {}):
             response = await self.post(stream=True, stream_options=options)
