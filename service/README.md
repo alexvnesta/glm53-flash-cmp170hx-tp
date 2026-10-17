@@ -101,6 +101,13 @@ GPU 0 first; see `glm/glm_profile.py` for the validated values.
 - Base URL: `http://127.0.0.1:8012/v1` (model id `GLM-5.3-Flash`, no API key)
 - `POST /v1/chat/completions`, `POST /v1/completions`, SSE streaming
 - Reasoning is returned as `reasoning_content`, the answer as `content`
+- Streaming `stream_options={"include_usage":true,"continuous_usage_stats":true}`
+  adds cumulative token usage to every chunk. Counts come from native emitted
+  token IDs, including reasoning and multi-token speculative batches; EOS
+  reconciles the authoritative native total, including withheld stop tokens.
+  Counts are per request, never SSE chunk counts or re-tokenized output text.
+  `include_usage` alone retains the final-only usage event. `/health.stream_usage`
+  advertises the continuous reporting contract.
 - OpenAI `tools` / `tool_choice` / `role: tool` messages are supported
 - `GET /health` reports cache format, context, speculation mode, draft ring size
   and prefix-cache stats (`prompt_cache`: hits/misses/restored tokens).
