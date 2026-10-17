@@ -75,3 +75,12 @@ retaining index planes on GPU. It reports aggregate and actual per-agent tok/s,
 cold-prefill time, correctness and the 16–17% short-task throughput cost.
 This is an experiment with static backing; the production behavior and budgets
 described above remain unchanged.
+
+The [dynamic paging follow-up](DYNAMIC_KV_PAGING_2026-10-17.md) keeps the same
+logical pool and four × 256K inputs, with CUDA-managed latent/scales instead
+of fixed host backing. Hot pages can migrate to GPU and cold pages can move
+to RAM under the driver's policy. Both cold packs passed, with shared decode
+at 117.0 / 130.6 tok/s low/high and about 25% improvement over static RAM.
+The same short cohort improved 15–16%. This is a driver policy, without an
+application LRU or explicit hot-tier size. It remains an isolated experiment;
+the production tiers and active capacity above are unchanged.

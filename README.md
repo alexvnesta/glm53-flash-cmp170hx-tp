@@ -85,6 +85,14 @@ after roughly 12 minutes of cold prefill; the unchanged short benchmark costs
 prototype, with per-agent rates and exact qualification limits in the report.
 Production retains the qualified GPU-resident active cache.
 
+The [dynamic KV paging follow-up](docs/DYNAMIC_KV_PAGING_2026-10-17.md) keeps
+the same four × 256K capacity and uses CUDA-managed migration between RAM and
+GPU. Shared decode reached **117.0 tok/s low / 130.6 tok/s high**, about 25%
+above static RAM. The unchanged short cohort improved 15–16%, to
+**148.8 / 139.0 tok/s**, with identical output token totals. Actual per-agent
+rates, cold completion times and qualification limits are in the report.
+This allocator remains experimental; production serving is unchanged.
+
 ## What you get
 
 | Feature or bounded probe | Native-SWA profile |

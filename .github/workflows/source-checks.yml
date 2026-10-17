@@ -21,7 +21,7 @@ jobs:
           ./engine/apply_engine.sh --verify
       - name: Validate Python and shell syntax
         run: |
-          python -m compileall -q service scripts engine
+          python -m compileall -q service scripts engine experiments/concurrent_throughput
           python - <<'PY'
           import pathlib, subprocess
           for folder in ('scripts', 'engine', 'examples', 'service/scripts'):

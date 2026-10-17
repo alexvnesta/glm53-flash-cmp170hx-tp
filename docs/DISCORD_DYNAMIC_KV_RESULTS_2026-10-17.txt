@@ -1,0 +1,35 @@
+GLM-5.3-Flash KV paging on 2× CMP170HX 64GB
+ExLlama3 TP2, 3.05bpw weights, Q8 KV, Weightless alpha 2, four active agents.
+
+Same short benchmark: 24 tasks per effort, temperature 0, max output 768.
+Tokens include reasoning. Aggregate and actual per-agent rates use the same wall time.
+
+Effort  Backing        Aggregate tok/s  Agent 1 / 2 / 3 / 4 tok/s      Completion
+Low     Static RAM       128.37        30.20 / 30.89 / 27.72 / 39.56   43.25 s
+Low     Dynamic paging   148.77        34.99 / 35.80 / 32.13 / 45.85   37.32 s
+High    Static RAM       120.73        33.32 / 20.66 / 28.29 / 38.47   48.89 s
+High    Dynamic paging   138.95        38.35 / 23.77 / 32.55 / 44.28   42.48 s
+
+15.9% / 15.1% more aggregate throughput. All 48 candidate tasks correct.
+Output totals match static RAM exactly: 5,552 low / 5,903 high tokens.
+The smaller GPU-only pool measured 154.98 / 143.12 tok/s; paging was 4.0% / 2.9% below it.
+
+Four independent 256K inputs, 32K output reservation per agent:
+Rates below measure only the common interval when all four are decoding.
+Completion includes cold prefill of all 1,048,576 input tokens.
+
+Effort  Backing        Decode tok/s    Agent 1 / 2 / 3 / 4 tok/s      Cold completion
+Low     Static RAM        93.53        24.32 / 23.33 / 23.13 / 22.74   12m12s
+Low     Dynamic paging   117.02        30.43 / 29.19 / 28.94 / 28.45   11m26s
+High    Static RAM       104.76        26.08 / 26.64 / 25.52 / 26.52   12m18s
+High    Dynamic paging   130.64        32.76 / 33.18 / 31.69 / 33.01   11m53s
+
+25.1% / 24.7% faster shared decoding. All eight long-context answers correct; zero cached input tokens.
+Including cold prefill, delivery was 1.482 / 2.453 completion tok/s aggregate.
+These are marker/array capacity checks, not a general 256K coding-quality benchmark.
+32K output was reserved; four full 32K answers were not generated.
+
+This uses CUDA driver-managed hot/cold migration, not a custom LRU.
+One scored run per effort/configuration; no confidence intervals or production-soak claim.
+Agent work distribution varies with backfill. Per-agent rates are measured, not aggregate/4.
+The experimental allocator is opt-in; production remains on its qualified GPU active cache.
