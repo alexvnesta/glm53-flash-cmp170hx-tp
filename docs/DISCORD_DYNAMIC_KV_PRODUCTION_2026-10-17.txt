@@ -1,0 +1,29 @@
+GLM 5.3 Flash dynamic KV qualification on 2× CMP170HX 64GB
+
+Production decision: NOT PROMOTED. A process restart hit the existing 64 MiB
+TP cudaHostRegister startup failure. Automatic retry recovered, but it failed
+the zero-retry acceptance gate. The four-slot GPU-cache profile is restored.
+
+New high-effort test: 4 independent 256K inputs recovered from disk, all 4 correct.
+Time until all four finish: 68.44 s, including cache recovery/prefill.
+
+Rate window                       Aggregate       Actual agents 0 / 1 / 2 / 3
+Shared four-agent decode          120.93 tok/s     30.33 / 30.71 / 29.33 / 30.56
+Whole pack, recovery included      25.57 tok/s      6.39 /  6.41 /  6.39 /  6.39
+
+Each agent recovered 258,048 cached input tokens. Four paired-state reads and
+4,032 page reads passed with zero I/O errors. Output counts incl.reasoning:
+437 / 439 / 437 / 437. Shared decode uses one common 13.06 s interval with all 4
+decoding; each agent's rate uses its measured token count.
+
+This is an as-run recovery observation: background CPU pressure exceeded the
+controlled timing guard. It is not a new allocator A/B speed comparison.
+
+Earlier clean PR17 cold 4×256K results for the same candidate:
+Effort   Aggregate decode    Actual agents 0 / 1 / 2 / 3          Finish
+Low      117.02 tok/s        30.43 / 29.19 / 28.94 / 28.45         685.75 s
+High     130.64 tok/s        32.76 / 33.18 / 31.69 / 33.01         713.31 s
+
+The remaining post-restart, vision and 15-minute soak gates were not run after
+the restart failure. Paging remains experimental. The router reload-wait fix
+is deployed and passed 25 mock tests plus a live request during restoration.
