@@ -2,6 +2,8 @@
 
 The candidate passed the frozen short cohort and both four × 256K capacity packs.
 The current production four-slot GPU profile is unchanged.
+The later [production qualification](DYNAMIC_KV_PRODUCTION_2026-10-17.md)
+passes four-context disk recovery, then rejects promotion at the restart gate.
 
 ## Allocation and policy
 

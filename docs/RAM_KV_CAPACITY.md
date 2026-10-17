@@ -84,3 +84,9 @@ at 117.0 / 130.6 tok/s low/high and about 25% improvement over static RAM.
 The same short cohort improved 15–16%. This is a driver policy, without an
 application LRU or explicit hot-tier size. It remains an isolated experiment;
 the production tiers and active capacity above are unchanged.
+
+The later [production qualification](DYNAMIC_KV_PRODUCTION_2026-10-17.md) verifies
+four 256K contexts recovering from disk, but rejects promotion after the known
+TP startup registration failure during a process restart. Dynamic paging is
+disabled in production; the GPU pool and existing RAM/disk budgets above remain
+the current configuration.
