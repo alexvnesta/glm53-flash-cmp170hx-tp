@@ -468,10 +468,28 @@ async def home():
     return RedirectResponse("/docs")
 
 
+def ensure_engine_ready():
+    wrapper = runtime.get('generator')
+    if wrapper is None:
+        return
+    if wrapper.error is None:
+        native = getattr(wrapper, 'generator', wrapper)
+        error = glm_tp_runtime.worker_exit_error(getattr(native, 'model', None))
+        if error is not None:
+            print('GLM TP worker failure: ' + str(error), flush=True)
+            latch = getattr(wrapper, 'latch_shared', None)
+            if latch is not None:
+                latch(error)
+            else:
+                from glm_async import fail_generation
+                fail_generation(wrapper, error)
+    if wrapper.error is not None:
+        raise HTTPException(503, "Generation engine failed; restart the GLM service")
+
+
 @app.get("/health")
 async def health():
-    if runtime["generator"].error:
-        raise HTTPException(503, "Generation engine failed; restart the GLM service")
+    ensure_engine_ready()
     dflash = (bool(getattr(runtime["args"], "draft_model_dir", None))
               and not getattr(runtime["args"], "mtp", False))
     generator = getattr(runtime["generator"], "generator", runtime["generator"])
@@ -592,6 +610,7 @@ def chat_token_length(fields):
 
 @app.get("/v1/models")
 async def models():
+    ensure_engine_ready()
     def card(model, effort, alias_of=None):
         reasoning = {"supported_efforts": list(EFFORT_LEVELS), "accepted_names": dict(EFFORT_NAMES),
                      "default": effort, "thinking_can_be_disabled": False}
@@ -647,6 +666,7 @@ async def embed_images(prompt, images, prompt_tokens, limit, context_length, req
 
 async def complete(body, request, chat):
     received = time.perf_counter()
+    ensure_engine_ready()
     from exllamav3 import AsyncJob, ComboSampler, GreedySampler
     if body.store:
         raise HTTPException(400, "Stored completions are unsupported; use store=false")

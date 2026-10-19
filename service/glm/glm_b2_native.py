@@ -371,14 +371,8 @@ def paired_async_generator_class(concurrent_base):
     """Latch a terminal cancel fault through the real async error/503 channel."""
     class PairedAsyncGenerator(concurrent_base):
         def latch_shared(self, error):
-            self.error = shared_failure(error)
-            coordinator = getattr(self.generator, '_glm_b2_retention', None)
-            if coordinator is not None and coordinator.shared is not None:
-                coordinator.shared.tickets.clear()
-            for job in self.jobs.values():
-                job.put_result(self.error)
-            self.jobs.clear()
-            return self.error
+            from glm_async import fail_generation
+            return fail_generation(self, shared_failure(error))
 
         def enqueue(self, job):
             import asyncio

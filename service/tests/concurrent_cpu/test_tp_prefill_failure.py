@@ -107,10 +107,11 @@ class AsyncFaults(unittest.IsolatedAsyncioTestCase):
                 from fastapi import FastAPI, HTTPException
                 import httpx
                 source = ast.parse((HERE.parents[1] / 'glm/glm_api.py').read_text())
+                helper = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == 'ensure_engine_ready')
                 handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'health')
                 handler.decorator_list = []
                 scope = {'runtime': {'generator': wrapper}, 'HTTPException': HTTPException}
-                exec(compile(ast.Module(body=[handler], type_ignores=[]), 'glm_api.py', 'exec'), scope)
+                exec(compile(ast.Module(body=[helper,handler], type_ignores=[]), 'glm_api.py', 'exec'), scope)
                 app = FastAPI()
                 app.get('/health')(scope['health'])
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:

@@ -58,7 +58,7 @@ latency saving.
 
 | Check | Result |
 |---|---|
-| Actual Generator/Job concurrency, recovery and ASGI health contracts | 72 run, 71 passed, 1 existing optional native-SAM skip |
+| Actual Generator/Job concurrency, recovery and ASGI health contracts | 75 run, 74 passed, 1 existing optional native-SAM skip |
 | HTTP contracts | 52 passed |
 | Actual response-handler AST / real Starlette cleanup | 4 passed |
 | Model-router contracts | 25 passed |
@@ -118,6 +118,35 @@ dominant colors and retains the long text-only marker/JSON oracles. It targets
 exact total lengths 98318/32784/131074/196625, leaving native prefill tails of
 13/15/1/16 tokens after page boundaries. Those checks and actual rank/cache
 recovery remain pending; no deployment follows from the partial results.
+
+## Actual rank-loss negative control and additional recovery fix
+
+The private v2 candidate passed the baseline-first positive mixed-vision/cold-tail
+cohort and16 post-vision requests. A fresh process also restored all four committed
+text contexts from its isolated persistent cache (1293 page reads, four state reads,
+zero I/O errors). These results did **not** establish rank recovery.
+
+A verified private GPU1 worker was killed during simultaneous decoding and long
+prefill. Both HTTP consumers stalled, while `/health` falsely returned200 for330s.
+The failed receipt and original v2 source/profile remain intact. The TP dispatch
+exception path cannot catch a rank death while its executor is inside a native
+collective; no deployment followed this negative result.
+
+The service now reads the owned multiprocessing children's CPU exit state in the
+existing health, readiness and completion gates. A dead child uses the existing
+shared failure coordinator to abort uncertain persistence and wake registered and
+pending consumers. Failed cancellation returns before acquiring the blocked native
+step lock. In-flight GPU work remains quarantined until the existing watchdog
+restarts the process; late results and further idle work are suppressed. This adds
+no supervisor, background liveness monitor or restart policy.
+
+The75 CPU checks include a real child-process exit and a deliberately blocked
+executor step: health/readiness/completion return503, all consumers receive the
+same first error, and HTTP cleanup completes without unlocking the running native
+step.52 HTTP, four actual response-lifetime AST and25 router checks also pass.
+The new service is staged as immutable candidate-v3 with a fresh profile/cache
+identity. Its972 engine files and native artifact are byte-identical to v2, so the
+existing native GPU numerics apply; full service GPU requalification is pending.
 
 ## Remaining gates
 

@@ -23,6 +23,27 @@ SHARING_ENV = "EXL3_TP_SHARING_STRATEGY"
 STRATEGIES = ("file_system", "file_descriptor")
 
 
+def worker_exit_error(model):
+    """Read only owned child-process state; never poll a TP pipe or a CUDA stream."""
+    if not getattr(model, 'loaded_tp', False):
+        return None
+    for index, child in enumerate(getattr(model, 'mp_children', ())):
+        if child is None:
+            continue
+        try:
+            pid = getattr(child, 'pid', None)
+            # The output pseudo-worker has no process/PID. A process not yet
+            # started is also not a dead owned rank (startup has its own gate).
+            if pid is None:
+                continue
+            code = child.exitcode
+            if code is not None or not child.is_alive():
+                return BrokenPipeError(f'TP worker {index} pid {pid} exited ({child.exitcode})')
+        except ValueError:
+            return BrokenPipeError(f'TP worker {index} process handle is closed')
+    return None
+
+
 def worker_timeout(environ=None):
     environ = os.environ if environ is None else environ
     raw = environ.get(TIMEOUT_ENV)
