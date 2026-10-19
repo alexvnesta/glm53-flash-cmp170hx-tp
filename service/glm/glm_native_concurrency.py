@@ -62,6 +62,21 @@ def verify_engine_sources(root):
 FIRST_MM_EMBEDDING_INDEX = 1000000000
 
 
+def tp_execution_failed(error):
+    """A rank execution/transport fault cannot be isolated to one prefill job.
+
+    Inspect exception types rather than CUDA error text. PyTorch exports some
+    native exceptions from torch and others from torch._C. No CUDA import or
+    device query is needed, including in the CPU lifecycle tests.
+    """
+    if isinstance(error, (TimeoutError, EOFError, BrokenPipeError, ConnectionError)):
+        return True
+    return any(cls.__module__.split('.')[0] == 'torch' and cls.__name__ in {
+        'AcceleratorError', 'OutOfMemoryError', 'DistError', 'DistBackendError',
+        'DistNetworkError', 'DistStoreError',
+    } for cls in type(error).__mro__)
+
+
 def _active_host():
     return os.environ.get('GLM53_TP_ACTIVE_HOST', '0') not in ('', '0')
 
@@ -339,10 +354,19 @@ def install_native_concurrency(slots=2):
                 shared = None if paired is None else paired.shared
                 result = (prefill(self, results, *args, **kwargs) if shared is None else
                           shared.prefill(self, results, prefill, *args, **kwargs))
-        except RecurrentReplayError as error:
+        except Exception as error:
             paired = getattr(self.generator, "_glm_b2_retention", None)
-            if paired is not None:
-                paired._terminal(error)
+            if isinstance(error, RecurrentReplayError) or tp_execution_failed(error):
+                if paired is not None:
+                    # StopSharedGeneration bypasses native reap_failed_job:
+                    # deallocation/fencing against a failed rank may hang and
+                    # must not publish uncertain checkpoints to disk.
+                    paired._terminal(error)
+                from glm_b2_native import StopSharedGeneration
+                disk = getattr(self.generator, 'disk_page_cache', None)
+                if disk is not None:
+                    disk.abort()
+                raise StopSharedGeneration('TP prefill execution failed') from error
             raise
         if mixed and any(event.get('stage') == 'prefill' for event in results[before:]):
             manager.mixed_prefill_steps += 1

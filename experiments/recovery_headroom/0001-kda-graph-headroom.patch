@@ -1,0 +1,54 @@
+--- a/exllamav3/exllamav3_ext/libtorch/gated_delta_net.cpp
++++ b/exllamav3/exllamav3_ext/libtorch/gated_delta_net.cpp
+@@ -1,4 +1,7 @@
+ #include <Python.h>
++#include <cerrno>
++#include <cstdlib>
++#include <cstdio>
+ #include "gated_delta_net.h"
+ #include <c10/cuda/CUDAGuard.h>
+ #include <ATen/cuda/CUDAContext.h>
+@@ -10,6 +13,34 @@
+ #include "../add.cuh"
+ 
+ using namespace torch::indexing;
++
++// Only new KDA graph execs are optional. Existing graphs keep replaying; a
++// refused slot permanently takes its existing eager launch sequence. This
++// prevents repeated capture attempts from consuming the remaining headroom.
++// The floor is a guard, not a memory reservation or an OOM recovery mechanism.
++static void guard_kda_graph_capture(Graph& graph)
++{
++    static const size_t floor_bytes = []() -> size_t {
++        const char* value = getenv("EXL3_KDA_GRAPH_MIN_FREE_MB");
++        if (!value) return 0;
++        char* end = nullptr;
++        errno = 0;
++        unsigned long long mb = strtoull(value, &end, 10);
++        TORCH_CHECK(*value && *value != '-' && end && !*end && !errno && mb <= 1048576,
++                    "EXL3_KDA_GRAPH_MIN_FREE_MB must be an integer from 0 to 1048576");
++        return (size_t) mb * 1024 * 1024;
++    }();
++    if (!floor_bytes || graph.disabled || graph.ready || !graph.ready_to_record) return;
++    size_t free_bytes = 0, total_bytes = 0;
++    AT_CUDA_CHECK(cudaMemGetInfo(&free_bytes, &total_bytes));
++    if (free_bytes < floor_bytes)
++    {
++        graph.disabled = true;
++        fprintf(stderr, "EXL3 KDA: new graph slot remains eager (free=%zu MiB, floor=%zu MiB)\n",
++                free_bytes / (1024 * 1024), floor_bytes / (1024 * 1024));
++    }
++}
++
+ 
+ at::Tensor BC_GatedDeltaNet::run_bsz1_a
+ (
+@@ -351,6 +382,8 @@
+                 "BC_GatedDeltaNetSplit::run_bszN: shape out of range");
+     Slot& s = slot(bsz, seqlen, history);
+     TORCH_CHECK(s.configured, "BC_GatedDeltaNetSplit::run_bszN: slot not configured");
++
++    if (kda) guard_kda_graph_capture(*s.graph);
+ 
+     if (s.graph->disabled || (!s.graph->ready && !s.graph->ready_to_record))
+     {

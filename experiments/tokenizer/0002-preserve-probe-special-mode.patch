@@ -1,0 +1,29 @@
+--- a/exllamav3/tokenizer/tokenizer.py
++++ b/exllamav3/tokenizer/tokenizer.py
+@@ -312,13 +312,19 @@
+         ok = getattr(self, "_chunking_verified", None)
+         if ok is None:
+             ok = True
+-            for special in (False, True):
+-                self.tokenizer.encode_special_tokens = not special
+-                ref = self.tokenizer.encode(_CHUNK_PROBE, add_special_tokens = False).ids
+-                parts = _split_chunks(_CHUNK_PROBE, target = 300, max_chunks = 64)
+-                encs = self.tokenizer.encode_batch(parts, add_special_tokens = False)
+-                if [i for e in encs for i in e.ids] != ref:
+-                    ok = False
++            previous_special = self.tokenizer.encode_special_tokens
++            try:
++                for special in (False, True):
++                    self.tokenizer.encode_special_tokens = not special
++                    ref = self.tokenizer.encode(_CHUNK_PROBE, add_special_tokens = False).ids
++                    parts = _split_chunks(_CHUNK_PROBE, target = 300, max_chunks = 64)
++                    encs = self.tokenizer.encode_batch(parts, add_special_tokens = False)
++                    if [i for e in encs for i in e.ids] != ref:
++                        ok = False
++            finally:
++                # The first long call may encode literal special-token text.
++                # A correctness probe must restore that caller's mode too.
++                self.tokenizer.encode_special_tokens = previous_special
+             self._chunking_verified = ok
+         return ok
+ 

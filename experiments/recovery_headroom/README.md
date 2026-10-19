@@ -1,0 +1,61 @@
+# Recovery and KDA graph headroom candidate
+
+This candidate is compiled and CPU-tested. GPU numerical checks, full-model
+memory/latency qualification, failure recovery and deployment remain pending.
+The standard profile and engine manifest retain their existing native sources.
+
+The service now treats typed PyTorch accelerator/distributed errors and rank
+transport/timeouts during TP prefill as shared failures. Its existing B2
+terminal latch bypasses per-job reaping, aborts uncertain pending persistence,
+wakes all async consumers and returns HTTP 503 from health. The installed
+watchdog can then apply its existing restart policy. Ordinary request errors
+still use per-job containment. No new supervisor or retry loop is introduced.
+
+The isolated native patch checks available device memory before instantiating
+a **new KDA graph slot**. With `EXL3_KDA_GRAPH_MIN_FREE_MB=1024`, a slot first
+encountered below 1 GiB remains on its existing eager launch sequence for the
+process lifetime. Existing graphs keep replaying; the first eager call does
+not query memory. Default zero retains the original capture policy. This is a
+heuristic guard, not reserved memory, a promise that a graph fits above the
+floor, or recovery from an already-failed CUDA operation. CUDA documents that
+[`cudaMemGetInfo`](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__MEMORY.html)
+can surface earlier asynchronous failures and that reported free memory does
+not guarantee an allocation will succeed. Those failures remain fatal.
+
+Prepare a fresh candidate after `engine/apply_engine.sh`:
+
+```bash
+python experiments/recovery_headroom/prepare.py /absolute/new-candidate --with-tokenizer
+```
+
+The optional tokenizer applies the two reviewed patches in
+[`../tokenizer`](../tokenizer/README.md). Preparation checks the standard
+community profile first, updates only the exact changed-file startup pins,
+and records a complete candidate manifest. The build wrapper reuses attested
+row32 objects and recompiles only `libtorch/gated_delta_net.cpp`:
+
+```bash
+python experiments/recovery_headroom/build.py \
+  --base-profile /absolute/attested-row32-profile \
+  --candidate /absolute/new-candidate --python /absolute/venv/bin/python
+```
+
+GPU work must have exclusive ownership of the two serving cards. This
+preparer/build command neither stops production nor starts a candidate.
+Qualification must cover eager-versus-graph KDA results, cold mixed-prefill
+tails, image/text overlap, four-slot JSON/tool/cancellation behavior, latency
+and throughput, cache recovery after restart, and recovery after an injected
+rank failure. Use separate candidate disk and compilation caches. Preserve
+the production profile, namespace and rollback receipts.
+
+CPU checks:
+
+```bash
+python -m unittest discover -s experiments/recovery_headroom -p 'test_*.py' -v
+python service/scripts/run_concurrent_cpu_tests.py --engine-root engine-src
+```
+
+The C++ policy tests execute the actual patched guard against a modeled CUDA
+memory-query boundary. They do not execute GPU kernels. The concurrency suite
+executes actual pinned Generator/Job methods with CPU rank/state stand-ins;
+the new fault cases also exercise the actual health handler through ASGI.
