@@ -1,11 +1,14 @@
 # Recovery, headroom and tokenizer qualification, October 19
 
-**Status: final GPU qualification passed; qualified cutover staged, not deployed
-or merged.** A real209,680-token public request arrived before activation at18:11Z,
-so the original production profile is still serving it. The follow-up is scheduled
-for15:11Eastern and must reverify currentstate/idle/artifactidentity before acting.
-Bounded private GPU windows stopped/restored the original service, with existing
-router admission and independent restoration. No active public request was killed.
+**Status: qualified and deployed2026-10-19 18:17:14 UTC; PR22 remains draft and
+unmerged.** A real209,680-token request arrived before activation and was left
+running on the original profile. It completed before the stable idle cutover.
+Both plain and `clear_thinking=false` real router canaries returned exactly `ok`.
+Independent verification matched972engine files,74service Python files, actual
+process cwd/cmdline/native maps and selected environment, the single drop-in,
+backend/router digest and exclusive canonical GPU ownership. The original
+profile/drop-in/cache remain retained for rollback. The one-off follow-up is
+removed; the weekly read-only review remains active.
 
 ## Observed failure and change
 
@@ -72,7 +75,7 @@ latency saving.
 | Actual HTTP code/tool tokenization | Six repeats per frozen body; identical token counts and body hashes, 194K: 392.62 to 90.50 ms; 277K: 544.84 to 127.68 ms |
 | Frozen four-request warm-cache cohort | Three repeats, identical input hashes, output token counts and cached-prefix lengths; median 97.77 to 102.47 tokens/s (+4.81%), wall time 10.30 to 9.83 s |
 | Full-model mixed vision/headroom and recovery | Final v4 positive cold-tail,16postvision, realrankkill/restart and committedcache restore passed |
-| Production deployment | Not performed |
+| Production deployment | Passed18:17:14Z: exact qualified profile, both router canaries; independent live verification18:17:55Z |
 
 The exact pinned source and community profile reproduce before candidate
 patching. Candidate manifests and startup source pins are checked separately;
@@ -174,21 +177,28 @@ establish a general decode gain. All answer/caching oracles pass; output formatt
 and reasoning vary by two tokens in some waves. The4x HTTP tokenizer preparation
 improvement is separate. Full verdict: `final_qualification_2026-10-19.json`.
 
-## Cutover pending
+## Production activation
 
-Full-model GPU qualification requires exclusive access and cannot run alongside
-the loaded production model. Alex authorized bounded windows after the current
-job finished. Stable router/backend idle is rechecked, an independent restoration
-timer is armed before stopping the model, and the window yields when public
-traffic arrives. Measured production reload is about two to three minutes;
-the router's readiness deadline is 1500 seconds. Preserve the original profile,
-unit, caches and restoration path. Those final gates now pass. The exact qualified profile has been prepared in the
-canonical production root and its relocation digest reverified, while the live
-single drop-in remains original. Activation is deferred for the real public job.
-An idle cutover must arm independent rollback, close the admission race through
-the existing router, load the exact qualified source/native/flags, and pass plain
-and `clear_thinking=false` chat canaries through the router. The original profile,
-cache namespace and drop-in backup remain available. The draft PR stays unmerged.
+All required qualification gates passed before deployment. The exact prepared
+profile was relocated into the canonical production root and its digest reverified.
+The real209Kpublic request arriving18:11Z was allowed to finish; stable idle was
+observed18:14:15Z. The guarded cutover then rechecked idle, armed independent
+rollback and closed admission through the existing router. Both real chat canaries
+passed18:17:14Z,125.43seconds after admission closed. The original profile and its
+exact single-drop-in backup, compilation cache and persistent namespace remain
+available. New prefixes warm in a distinct persistent-cache namespace.
+
+Actual production: `profile-recovery-f8bd8a3`, PID1310405 at18:17:55Z,
+routerPID895282 unchanged, digest
+`ea113986b1e75876c7f5efd202015941b6b25bf81e64a4a037f3086b1a3a59cd`,
+native `e4afb2ed95824640a16fb0a183b37a9322d3ab145786a4c0f4b94a5a2fbc2a7e`.
+Independent verification matched all972engine files,74service Python files, actual
+process/native maps/environment and selected configuration. Only the canonical
+service owns both GPUs; Qwen and private units are inactive, the existing watchdog
+is active, and deployment rollback is disarmed by the committed canaries. The
+canonical deployment README records the exact runtime recipe; its `repo/` main
+checkout remainsdb01c25 and is not the live profile. PR22 stays draft and unmerged.
+The one-off follow-up is removed; the weekly read-only review remains active.
 
 Candidate preparation and policy limits:
 [`experiments/recovery_headroom`](../experiments/recovery_headroom/README.md).

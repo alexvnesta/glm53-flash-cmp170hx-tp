@@ -2,8 +2,9 @@
 
 This candidate is compiled and CPU-tested. The small synthetic KDA GPU oracle
 passes on both SM80 cards. Final full-model memory/latency, cancellation, mixed vision/cold-tail, actual
-rank-failure and committed-cache recovery checks also pass. Cutover is prepared
-and deferred for an active public request; no candidate has been deployed or merged.
+rank-failure and committed-cache recovery checks also pass. The qualified profile was deployed2026-10-19 18:17Z after the active public
+request completed. Both router canaries and independent live identity checks
+passed. The original profile/cache/drop-in remain available; PR22 stays unmerged.
 The standard profile and engine manifest retain their existing native sources.
 
 The service now treats typed PyTorch accelerator/distributed errors and rank
