@@ -29,15 +29,18 @@ def main():
     changes = {k: {'before': before.get(k), 'after': after.get(k)}
                for k in before.keys() | after.keys() if before.get(k) != after.get(k)}
     prepared = json.loads((candidate / 'receipts/candidate.json').read_text())
-    allowed = {relative}
-    if prepared.get('python_patches'):
-        expected_patches = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                            for p in (ROOT / 'experiments/tokenizer').glob('*.patch')}
-        if prepared['python_patches'] != expected_patches:
-            raise ValueError('Candidate tokenizer patch identities changed')
+    cache_relative = 'exllamav3/generator/disk_cache.py'
+    allowed = {relative, cache_relative}
+    cache_patch = HERE / '0002-disk-cache-budget-progress.patch'
+    expected_patches = {cache_patch.name: hashlib.sha256(cache_patch.read_bytes()).hexdigest()}
+    if set(prepared.get('python_patches', {})) - set(expected_patches):
+        expected_patches.update({p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                                 for p in (ROOT / 'experiments/tokenizer').glob('*.patch')})
         allowed.add('exllamav3/tokenizer/tokenizer.py')
+    if prepared.get('python_patches') != expected_patches:
+        raise ValueError('Candidate cache/tokenizer patch identities changed')
     if set(changes) != allowed:
-        raise ValueError('Only the reviewed KDA unit and optional tokenizer may differ from the attested base')
+        raise ValueError('Only the reviewed KDA unit and cache/tokenizer Python sources may differ')
     if changes != prepared['changed_sources']:
         raise ValueError('Candidate source bytes changed after preparation')
     if prepared['native_patch_sha256'] != hashlib.sha256((HERE / '0001-kda-graph-headroom.patch').read_bytes()).hexdigest():

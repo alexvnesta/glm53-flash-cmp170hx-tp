@@ -25,13 +25,19 @@ def main():
               for relative in pin_files}
     subprocess.run(['git', 'apply', '--check', str(patch)], cwd=engine, check=True)
     subprocess.run(['git', 'apply', str(patch)], cwd=engine, check=True)
-    python_patches = {}
+    cache_patch = here / '0002-disk-cache-budget-progress.patch'
+    cache_relative = 'exllamav3/generator/disk_cache.py'
+    cache_before = hashlib.sha256((engine / cache_relative).read_bytes()).hexdigest()
+    subprocess.run(['git', 'apply', '--check', str(cache_patch)], cwd=engine, check=True)
+    subprocess.run(['git', 'apply', str(cache_patch)], cwd=engine, check=True)
+    python_patches = {cache_patch.name: hashlib.sha256(cache_patch.read_bytes()).hexdigest()}
     if args.with_tokenizer:
         for source in sorted((repo / 'experiments/tokenizer').glob('*.patch')):
             subprocess.run(['git', 'apply', '--check', str(source)], cwd=engine, check=True)
             subprocess.run(['git', 'apply', str(source)], cwd=engine, check=True)
             python_patches[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
-    changes = {}
+    changes = {cache_relative: {'before': cache_before,
+                               'after': hashlib.sha256((engine / cache_relative).read_bytes()).hexdigest()}}
     for relative, filename in pin_files.items():
         digest = hashlib.sha256((engine / relative).read_bytes()).hexdigest()
         pins = output / 'service/glm' / filename

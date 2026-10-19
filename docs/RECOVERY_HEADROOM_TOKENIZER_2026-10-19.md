@@ -1,3 +1,37 @@
+# Post-deployment failure: original production restored, work unfinished
+
+The first real request after the initial canaries stalled at18:19Z. Two
+non-pausing Python stack samples show the GPU executor spinning in the upstream
+DiskPageCache eviction loop while the HTTP loop waits for the cache lock.
+Physical disk space is ample. Unlike the isolated qualification root, the
+production cache root contains several retained fingerprints sharing its50GiB
+budget. A zero or insufficient namespace share and rooted checkpoints can leave
+no eviction candidate; the old make_room loop neither progresses nor refuses.
+The exact historical effective share was not recorded, so zero share remains a
+reproduction condition rather than a measured live value.
+
+The original profile-db01c25/nativef0/drop-in was restored at18:25:20Z. Its model
+became ready18:28:35Z and a real214,978-token request streamed with fresh progress.
+The stalled request lost its connection during rollback. The earlier idle cutover
+record below is historical evidence, not approval for continued use. Failed
+profile/namespace and both stack samples are preserved. The one-off follow-up is
+active again for15:30Eastern; the weekly read-only review is unchanged.
+
+A new staged patch bounds eviction progress and refuses page/checkpoint writes
+before file creation, TP dispatch or reservation when no budget can be made.
+It preserves the RAM tier and existing disk data, and reports the effective
+namespace budget separately from the shared root budget. Twelve CPU checks run
+actual pinned cache methods: the original negative control spins in a bounded
+child process, protected siblings/rooted states and pending reservations refuse
+safely, normal leaf-first eviction works, no rejected write issues file/rank I/O,
+reservation/error accounting is preserved, and actual CPUPageCache.store retains
+its RAM entry. Full CPU/service and new GPU/shared-root qualification remain
+required before another deployment. No serving code is being edited in place.
+Current upstream cache commit1ac6d1271e7a5a75839804b9cfb358cc475f46a4 addresses Windows
+statvfs compatibility; it does not fix this eviction condition.
+
+## Superseded initial qualification and cutover record
+
 # Recovery, headroom and tokenizer qualification, October 19
 
 **Status: qualified and deployed2026-10-19 18:17:14 UTC; PR22 remains draft and

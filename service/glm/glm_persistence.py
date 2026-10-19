@@ -122,7 +122,7 @@ def persistence_health(disk):
     if disk is None:
         return {"enabled": False}
     with disk._lock:
-        return {"enabled": True, "fingerprint": disk.fingerprint, "budget_bytes": disk.root_size,
+        return {"enabled": True, "fingerprint": disk.fingerprint, "budget_bytes": disk.root_size, "namespace_budget_bytes": disk.max_size,
                 "resident_bytes": disk.total_size, "pages": len(disk.pages), "checkpoints": len(disk.states),
                 "pending_pages": len(disk.pending_pages), "pending_checkpoints": len(disk.pending_states),
                 "writes_disabled": disk.write_disabled, "metrics": dict(disk.metrics)}

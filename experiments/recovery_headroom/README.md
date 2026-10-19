@@ -1,3 +1,15 @@
+# Current status: rolled back; cache-budget fix staged
+
+The initial candidate passed isolated GPU checks/canaries but its first real
+request stalled in disk-cache eviction. Original production is restored and
+serving; do not redeploy that candidate as qualified for continued use. The
+new disk-budget patch refuses non-progressing/oversized writes before I/O and
+exposes effective per-namespace quota. Twelve actual-method CPU checks pass;
+service checks and GPU shared-root/cache-pressure qualification are pending.
+See the main qualification report for the incident and retained negative proof.
+
+## Earlier headroom/tokenizer qualification and recipe
+
 # Recovery and KDA graph headroom candidate
 
 This candidate is compiled and CPU-tested. The small synthetic KDA GPU oracle

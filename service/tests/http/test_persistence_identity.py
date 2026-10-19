@@ -3,14 +3,26 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import threading
 from types import SimpleNamespace as NS
 import unittest
 from unittest.mock import patch
 
-from glm_persistence import persistence_options, profile_identity, identity_digest, source_digest
+from glm_persistence import persistence_options, profile_identity, identity_digest, source_digest, persistence_health
 
 
 class ProfileContracts(unittest.TestCase):
+    def test_health_distinguishes_root_budget_from_exhausted_namespace_share(self):
+        disk = NS(_lock=threading.RLock(), fingerprint='synthetic', root_size=50*1024**3,
+                  max_size=0, total_size=8, pages={}, states={b'x': object()},
+                  pending_pages=set(), pending_states={}, write_disabled=False,
+                  metrics={'skipped_budget': 3})
+        report = persistence_health(disk)
+        self.assertEqual(report['budget_bytes'], 50*1024**3)
+        self.assertEqual(report['namespace_budget_bytes'], 0)
+        self.assertEqual(report['metrics']['skipped_budget'], 3)
+        self.assertFalse(report['writes_disabled'])
+
     def test_options_require_owned_ram_tier_and_bounded_disk(self):
         args = NS(disk_cache_dir='/tmp/model-cache', disk_cache_size=50, persistent_cache_min_free_gib=16)
         with self.assertRaises(ValueError):
