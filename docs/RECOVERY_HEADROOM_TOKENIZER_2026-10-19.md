@@ -1,10 +1,11 @@
 # Recovery, headroom and tokenizer qualification, October 19
 
-**Status: CPU, small KDA GPU and four-slot lifecycle checks passed; remaining
-full-model qualification and deployment pending.** The production four-slot
-profile, native library and cache configuration are preserved. Bounded private
-GPU windows now stop and restore its service, while the existing router holds
-incoming requests. No candidate has been deployed or merged.
+**Status: final GPU qualification passed; qualified cutover staged, not deployed
+or merged.** A real209,680-token public request arrived before activation at18:11Z,
+so the original production profile is still serving it. The follow-up is scheduled
+for15:11Eastern and must reverify currentstate/idle/artifactidentity before acting.
+Bounded private GPU windows stopped/restored the original service, with existing
+router admission and independent restoration. No active public request was killed.
 
 ## Observed failure and change
 
@@ -70,7 +71,7 @@ latency saving.
 | Private full-model four-slot JSON/code and lifecycle | Five four-way waves; 24 completed, two canceled; survivors and replacement requests pass |
 | Actual HTTP code/tool tokenization | Six repeats per frozen body; identical token counts and body hashes, 194K: 392.62 to 90.50 ms; 277K: 544.84 to 127.68 ms |
 | Frozen four-request warm-cache cohort | Three repeats, identical input hashes, output token counts and cached-prefix lengths; median 97.77 to 102.47 tokens/s (+4.81%), wall time 10.30 to 9.83 s |
-| Full-model mixed vision/headroom and recovery | Pending baseline-first positive cold-tail and rank/cache tests |
+| Full-model mixed vision/headroom and recovery | Final v4 positive cold-tail,16postvision, realrankkill/restart and committedcache restore passed |
 | Production deployment | Not performed |
 
 The exact pinned source and community profile reproduce before candidate
@@ -82,8 +83,10 @@ The KDA GPU oracle forces the guard with a 1 TiB floor in a separate process;
 14 expected refusal logs are verified. It checks the new fallback control path,
 not actual low-memory full-model behavior. The candidate native SHA is
 `e4afb2ed95824640a16fb0a183b37a9322d3ab145786a4c0f4b94a5a2fbc2a7e`.
-The private model's profile digest is
+The earlier v2 profile digest is
 `0820957d56c3b80384616a5f4995135aa55b1ded622c54e231a03831c541e0b3`.
+The final v4 profile digest is
+`ea113986b1e75876c7f5efd202015941b6b25bf81e64a4a037f3086b1a3a59cd`.
 
 The first private model launch failed before readiness because the transient
 test unit omitted production's `LimitNOFILE=65536`. The attempt is retained;
@@ -116,8 +119,8 @@ The headroom policy was observed refusing new full-model graph slots at
 A separate baseline-first positive test asks the image requests only for their
 dominant colors and retains the long text-only marker/JSON oracles. It targets
 exact total lengths 98318/32784/131074/196625, leaving native prefill tails of
-13/15/1/16 tokens after page boundaries. Those checks and actual rank/cache
-recovery remain pending; no deployment follows from the partial results.
+13/15/1/16 tokens after page boundaries. The final runtime passed both cold and warm waves, plus16postvisionrequests.
+Earlier negative outcomes remain retained rather than being converted to passes.
 
 ## Actual rank-loss negative control and additional recovery fix
 
@@ -144,11 +147,34 @@ The75 CPU checks include a real child-process exit and a deliberately blocked
 executor step: health/readiness/completion return503, all consumers receive the
 same first error, and HTTP cleanup completes without unlocking the running native
 step.52 HTTP, four actual response-lifetime AST and25 router checks also pass.
-The new service is staged as immutable candidate-v3 with a fresh profile/cache
-identity. Its972 engine files and native artifact are byte-identical to v2, so the
-existing native GPU numerics apply; full service GPU requalification is pending.
+The final service is immutable candidate-v4, with a fresh profile/cache identity.
+Its972 engine files and native artifact are byte-identical to v2. Candidate-v3 was
+withdrawn before readiness after an additional CPU negative control exposed a
+cancellation already waiting on the step lock; the corrected waiter test passes.
 
-## Remaining gates
+The actual v4 GPU1 rank-kill now produces health and readiness503 in1.787seconds
+under0.25s health probes. Both existing SSE consumers receive errors and close in
+1.79seconds. The real disk-cache abort warning is recorded. The installed watchdog
+restarted the private process after three bad checks, and the same profile became
+ready in128.33seconds. This test invokes watchdog checks1sapart and uses a private
+5sstop timeout; production retains60schecks,480sstartupgrace and60sstop timeout.
+These private timings are not a production recovery SLA.
+
+The fresh recovered process then restores all four8K/32K/98K/196Kcommitted contexts
+in28.86seconds:1293page reads, four state reads, zeroI/Oerrors. A final GPU repeat
+also passes five four-way/cancellation waves, two mixed vision/text cold/warm waves
+with exact tails13/15/1/16, and16low/high postvisionrequests. Native graph refusal
+is observed again at405MiBfree under the1024MiBfloor.
+
+The first final-runtime benchmark overlapped external CPU-heavy CI and measured
+93.37tok/s. Once pressure cleared, the same runtime repeated102.14tok/s (9.86s),
+versus a fresh original-engine control101.07tok/s (9.94s). Treat warm throughput as
+similar; this1.06percent bounded difference and earlier4.81percent result do not
+establish a general decode gain. All answer/caching oracles pass; output formatting
+and reasoning vary by two tokens in some waves. The4x HTTP tokenizer preparation
+improvement is separate. Full verdict: `final_qualification_2026-10-19.json`.
+
+## Cutover pending
 
 Full-model GPU qualification requires exclusive access and cannot run alongside
 the loaded production model. Alex authorized bounded windows after the current
@@ -156,9 +182,13 @@ job finished. Stable router/backend idle is rechecked, an independent restoratio
 timer is armed before stopping the model, and the window yields when public
 traffic arrives. Measured production reload is about two to three minutes;
 the router's readiness deadline is 1500 seconds. Preserve the original profile,
-unit, caches and restoration path. Full-model mixed vision/headroom, comparable
-performance, committed-cache recovery and actual rank-failure recovery must
-pass before deployment. The draft PR remains unmerged.
+unit, caches and restoration path. Those final gates now pass. The exact qualified profile has been prepared in the
+canonical production root and its relocation digest reverified, while the live
+single drop-in remains original. Activation is deferred for the real public job.
+An idle cutover must arm independent rollback, close the admission race through
+the existing router, load the exact qualified source/native/flags, and pass plain
+and `clear_thinking=false` chat canaries through the router. The original profile,
+cache namespace and drop-in backup remain available. The draft PR stays unmerged.
 
 Candidate preparation and policy limits:
 [`experiments/recovery_headroom`](../experiments/recovery_headroom/README.md).

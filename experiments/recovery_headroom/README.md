@@ -1,8 +1,9 @@
 # Recovery and KDA graph headroom candidate
 
 This candidate is compiled and CPU-tested. The small synthetic KDA GPU oracle
-passes on both SM80 cards. Full-model memory/latency qualification, failure
-recovery and deployment remain pending.
+passes on both SM80 cards. Final full-model memory/latency, cancellation, mixed vision/cold-tail, actual
+rank-failure and committed-cache recovery checks also pass. Cutover is prepared
+and deferred for an active public request; no candidate has been deployed or merged.
 The standard profile and engine manifest retain their existing native sources.
 
 The service now treats typed PyTorch accelerator/distributed errors and rank
@@ -10,7 +11,10 @@ transport/timeouts during TP prefill as shared failures. Its existing B2
 terminal latch bypasses per-job reaping, aborts uncertain pending persistence,
 wakes all async consumers and returns HTTP 503 from health. The installed
 watchdog can then apply its existing restart policy. Ordinary request errors
-still use per-job containment. No new supervisor or retry loop is introduced.
+still use per-job containment. The existing health/readiness/request gates also detect an exited owned child
+without waiting on a blocked GPU step. Registered and pending consumers are woken,
+and cancellation already waiting for the step lock can observe quarantine.
+No new serving supervisor or recovery policy is introduced.
 
 The isolated native patch checks available device memory before instantiating
 a **new KDA graph slot**. With `EXL3_KDA_GRAPH_MIN_FREE_MB=1024`, a slot first

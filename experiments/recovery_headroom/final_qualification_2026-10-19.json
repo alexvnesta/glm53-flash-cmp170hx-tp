@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "at": "2026-10-19T18:10:10.503941+00:00",
+  "runtime_commit": "f8bd8a385b8beb297e1dfde05e9ce7de016ecc4e",
+  "profile_digest": "ea113986b1e75876c7f5efd202015941b6b25bf81e64a4a037f3086b1a3a59cd",
+  "native_sha256": "e4afb2ed95824640a16fb0a183b37a9322d3ab145786a4c0f4b94a5a2fbc2a7e",
+  "gates": {
+    "native_numerics": "14bitexactsmallKDAGPUcases on bothSM80cards, same native/source artifact",
+    "startup_numerics": "18steering checks per GPU after both initial load and injected-rank restart",
+    "cpu": "75run74passed1existingSAMskip;52HTTP/4actual-responseAST/25router passed",
+    "four_slot_cancellation": "5fourway waves,24completions2cancellations; survivors/replacements pass",
+    "mixed_vision_cold_shapes": "4concurrent slots,2imagecolors/2longtext oracles, cold/warm exacttails13/15/1/16 pass,0towerfaults or estimate mismatches",
+    "post_vision": "16requests low/high effort pass",
+    "rank_failure": "actualownedGPU1rankSIGKILL in mixedprefill/decode, health/models503, consumerswake, diskabort, installedwatchdog3badcheck restart sameidentity",
+    "committed_cache_restore": "freshpost-rankprocess restores4contexts;1293page reads4state reads0I/Oerrors",
+    "performance": "fresh low-contention control101.07 vs final candidate102.14completiontok/s; no material regression observed in this bounded cohort, no general decode gain established",
+    "tokenizer": "54exactIDs+4recordedMMtensors; HTTP194K392.62\u219290.50ms277K544.84\u2192127.68ms"
+  },
+  "performance": {
+    "baseline_warm_tok_s": 101.06515153601214,
+    "candidate_warm_tok_s": 102.13753199717794,
+    "change_pct": 1.0610783686241243,
+    "baseline_warm_wall_s": 9.944080474087968,
+    "candidate_warm_wall_s": 9.859255264047533,
+    "fixture_sha256": "8556b519ec045439111bdf484004cb8d1ff77f675ee4c11faaf69123003148ae",
+    "repeats": 3,
+    "caveat": "Non-alternating bounded cohorts, output-format/reasoning token counts vary by2tokens in some waves. Earlier controls97.69/97.77 and candidate102.47; first final run93.37 overlapped external CPU CI. Treat warm throughput as similar;4x tokenizer preparation result is distinct."
+  },
+  "rank": {
+    "detection_under_025s_health_probe_seconds": 1.7869907430140302,
+    "consumer_failure_seconds": [
+      1.789125818060711,
+      1.790661073056981
+    ],
+    "private_recovery_seconds": 128.33252784400247,
+    "watchdog_policy": "Actual installed480sgrace/3badchecks; test invokes checks1sapart, productiontimer60s unchanged",
+    "production_timer_seconds": 60,
+    "production_startup_grace_seconds": 480,
+    "private_stop_timeout_seconds": 5,
+    "production_stop_timeout_seconds": 60,
+    "production_SLA_claim": false
+  },
+  "negative_results_preserved": [
+    "v2healthfalsehealthy330s actualrankkill",
+    "uncorrectedtokenizertwoexactIDfails",
+    "identical failedblueMMmarkeroracle inoriginal/candidate",
+    "cancellation-already-waiting CPUtimeoutbeforefix",
+    "testunitFDlimit omission",
+    "initialcontrolclientreadtimeout",
+    "firstv4preflightouterenginehash mismatch"
+  ],
+  "merged": false,
+  "production_activated": false
+}
