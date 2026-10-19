@@ -1,0 +1,108 @@
+{
+  "original_oracle_passed": false,
+  "candidate_oracle_passed": false,
+  "regression_observed": false,
+  "scope": "Exact negative multimodal record-retrieval cohort; identical input and output in unchanged engine control and candidate. This does not turn either failed oracle into a pass.",
+  "failed_case": "mixed-cold-vision-1",
+  "input_tokens": 34158,
+  "answer_sha256": "6cb4f714f020a5c2afa2671cb733e11ff792fb8414cc98cd033ecefbfaa82856",
+  "same_complete_answer": true,
+  "same_usage": true,
+  "usage": {
+    "prompt_tokens": 34158,
+    "completion_tokens": 608,
+    "total_tokens": 34766,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "draft_tokens": 617,
+    "draft_tokens_accepted": 545
+  },
+  "baseline_prompt_ms": 82844.38729286194,
+  "candidate_prompt_ms": 82758.01086425781,
+  "baseline_decode_ms": 37675.27079582214,
+  "candidate_decode_ms": 37420.008182525635,
+  "tokenizer_exact_ids": {
+    "passed": true,
+    "scope": "Actual service vision rewrite and renderer; actual full Tokenizer classes and MMEmbedding splice; CPU dummy embedding values, no model weights or GPU execution",
+    "cuda_initialized": false,
+    "rows": [
+      {
+        "id": "mixed-cold-vision-0",
+        "image_count": 1,
+        "equal": true,
+        "baseline": {
+          "shape": [
+            1,
+            98582
+          ],
+          "sha256": "f78626715ff5a78418657b617abba01ec97fb0623c2510a75ad33fef16298f80"
+        },
+        "candidate": {
+          "shape": [
+            1,
+            98582
+          ],
+          "sha256": "f78626715ff5a78418657b617abba01ec97fb0623c2510a75ad33fef16298f80"
+        }
+      },
+      {
+        "id": "mixed-cold-vision-1",
+        "image_count": 1,
+        "equal": true,
+        "baseline": {
+          "shape": [
+            1,
+            34158
+          ],
+          "sha256": "65745f30f01175c264ed3f6e8bbb3aba7884bc4b86a0b8ed30a8aa867d6205e4"
+        },
+        "candidate": {
+          "shape": [
+            1,
+            34158
+          ],
+          "sha256": "65745f30f01175c264ed3f6e8bbb3aba7884bc4b86a0b8ed30a8aa867d6205e4"
+        }
+      },
+      {
+        "id": "mixed-cold-vision-2",
+        "image_count": 0,
+        "equal": true,
+        "baseline": {
+          "shape": [
+            1,
+            131072
+          ],
+          "sha256": "ac8565fc31ee2db2899a53956b23611a83e7b85f9f96c03baab817e702d0491c"
+        },
+        "candidate": {
+          "shape": [
+            1,
+            131072
+          ],
+          "sha256": "ac8565fc31ee2db2899a53956b23611a83e7b85f9f96c03baab817e702d0491c"
+        }
+      },
+      {
+        "id": "mixed-cold-vision-3",
+        "image_count": 0,
+        "equal": true,
+        "baseline": {
+          "shape": [
+            1,
+            196608
+          ],
+          "sha256": "9a1b03f69556bde5a7a4811fd9c2b844944fc1783fe3fbf519dae0085e21a884"
+        },
+        "candidate": {
+          "shape": [
+            1,
+            196608
+          ],
+          "sha256": "9a1b03f69556bde5a7a4811fd9c2b844944fc1783fe3fbf519dae0085e21a884"
+        }
+      }
+    ]
+  }
+}

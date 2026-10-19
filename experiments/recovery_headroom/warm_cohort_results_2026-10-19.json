@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "scope": "Frozen synthetic four-request warm-cache cohort, 8K/32K/98K/196K,3repeats; no general production speed claim",
+  "fixture_sha256": "8556b519ec045439111bdf484004cb8d1ff77f675ee4c11faaf69123003148ae",
+  "baseline_warm_tok_s": 97.77204405229428,
+  "candidate_warm_tok_s": 102.47497172103166,
+  "throughput_change_pct": 4.810094454220448,
+  "baseline_wall_s": 10.299467600998469,
+  "candidate_wall_s": 9.826789733022451,
+  "rows": [
+    {
+      "baseline_s": 10.04743984004017,
+      "candidate_s": 10.008829075959511,
+      "baseline_cache": [
+        7936,
+        32512,
+        98048,
+        196352
+      ],
+      "candidate_cache": [
+        7936,
+        32512,
+        196352,
+        98048
+      ],
+      "baseline_tokens": 1005,
+      "candidate_tokens": 1005
+    },
+    {
+      "baseline_s": 10.299467600998469,
+      "candidate_s": 9.789947282988578,
+      "baseline_cache": [
+        32512,
+        7936,
+        98048,
+        196352
+      ],
+      "candidate_cache": [
+        32512,
+        7936,
+        196352,
+        98048
+      ],
+      "baseline_tokens": 1007,
+      "candidate_tokens": 1007
+    },
+    {
+      "baseline_s": 10.333213220001198,
+      "candidate_s": 9.826789733022451,
+      "baseline_cache": [
+        32512,
+        7936,
+        98048,
+        196352
+      ],
+      "candidate_cache": [
+        32512,
+        7936,
+        196352,
+        98048
+      ],
+      "baseline_tokens": 1007,
+      "candidate_tokens": 1007
+    }
+  ],
+  "cold_comparison": "Initialcontrolv2wave partially warm after prior privateclienttimeout; exclude initialwave from pairedspeedclaim"
+}

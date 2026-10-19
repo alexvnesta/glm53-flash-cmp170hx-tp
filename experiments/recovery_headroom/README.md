@@ -1,7 +1,8 @@
 # Recovery and KDA graph headroom candidate
 
-This candidate is compiled and CPU-tested. GPU numerical checks, full-model
-memory/latency qualification, failure recovery and deployment remain pending.
+This candidate is compiled and CPU-tested. The small synthetic KDA GPU oracle
+passes on both SM80 cards. Full-model memory/latency qualification, failure
+recovery and deployment remain pending.
 The standard profile and engine manifest retain their existing native sources.
 
 The service now treats typed PyTorch accelerator/distributed errors and rank
@@ -59,3 +60,13 @@ The C++ policy tests execute the actual patched guard against a modeled CUDA
 memory-query boundary. They do not execute GPU kernels. The concurrency suite
 executes actual pinned Generator/Job methods with CPU rank/state stand-ins;
 the new fault cases also exercise the actual health handler through ASGI.
+
+The separate `gpu_oracle.py` requires exclusive cards and checks the complete
+candidate source manifest and built native identity. It runs seven KDA shapes
+on each card, including four-way speculative history and the 16-token boundary.
+Four repeated invocations per shape exercise first eager use, capture and
+replay. A second process sets the floor to 1 TiB to force the new eager policy;
+outputs, convolution state and recurrent state must all match bit for bit.
+The expected 14 guard-refusal logs are checked. The October 19 receipt is
+`gpu_results_2026-10-19.json`. This is a small-layer test, not proof of actual
+low-memory behavior or full-model fit, performance or recovery.
