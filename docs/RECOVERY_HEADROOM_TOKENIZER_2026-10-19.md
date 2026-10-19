@@ -15,7 +15,7 @@ became ready18:28:35Z and a real214,978-token request streamed with fresh progre
 The stalled request lost its connection during rollback. The earlier idle cutover
 record below is historical evidence, not approval for continued use. Failed
 profile/namespace and both stack samples are preserved. The one-off follow-up is
-active again for15:30Eastern; the weekly read-only review is unchanged.
+active again for15:50Eastern; the weekly read-only review is unchanged.
 
 A new staged patch bounds eviction progress and refuses page/checkpoint writes
 before file creation, TP dispatch or reservation when no budget can be made.
@@ -25,8 +25,10 @@ actual pinned cache methods: the original negative control spins in a bounded
 child process, protected siblings/rooted states and pending reservations refuse
 safely, normal leaf-first eviction works, no rejected write issues file/rank I/O,
 reservation/error accounting is preserved, and actual CPUPageCache.store retains
-its RAM entry. Full CPU/service and new GPU/shared-root qualification remain
-required before another deployment. No serving code is being edited in place.
+its RAM entry. The serving-host17combinedpolicy tests,75concurrency checks(74passed/oneexisting
+skip) and53HTTP checks pass; CI succeeds on059749c. Immutablecandidate-v5 is
+prepared and imported with GPUs hidden. New GPU/shared-root qualification remains
+required; the18:47attempt sawbusy_no_changes before touching serving. No serving code is being edited in place.
 Current upstream cache commit1ac6d1271e7a5a75839804b9cfb358cc475f46a4 addresses Windows
 statvfs compatibility; it does not fix this eviction condition.
 

@@ -4,8 +4,10 @@ The initial candidate passed isolated GPU checks/canaries but its first real
 request stalled in disk-cache eviction. Original production is restored and
 serving; do not redeploy that candidate as qualified for continued use. The
 new disk-budget patch refuses non-progressing/oversized writes before I/O and
-exposes effective per-namespace quota. Twelve actual-method CPU checks pass;
-service checks and GPU shared-root/cache-pressure qualification are pending.
+exposes effective per-namespace quota. Twelve actual-method CPU checks plus five native policy tests pass, along with
+75concurrency checks(74pass/oneexisting skip) and53HTTP checks. Candidate-v5 is
+prepared, but GPU shared-root/cache-pressure qualification is pending after an
+idle guard declined the18:47attempt without changes.
 See the main qualification report for the incident and retained negative proof.
 
 ## Earlier headroom/tokenizer qualification and recipe
