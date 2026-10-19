@@ -1,3 +1,34 @@
+## Latest attempt: yielded to real traffic at 19:58 UTC
+
+A stable idle boundary allowed a bounded private v5 pressure window at 19:53.
+The exact candidate/native identities and all engine/service manifests were
+reverified. The candidate was ready at 19:55:37 with an effective namespace budget
+of zero under the private 50 GiB root. A 19:57:38 monitor sample showed responsive
+health, growing long-prompt prefill, 752 refused writes, no disk writes and zero
+write errors. The first cold four-context wave had not completed when public
+traffic arrived at 19:58:23. This is partial evidence, **not a passed GPU gate**.
+The 512 MiB phase and full combined suite have not run.
+
+The harness yielded immediately; original production started at 19:58:31 and was
+ready at 20:00:29. At 20:00:42 it was healthy and streaming a real 176,151-token
+request, with 180 generated tokens and 38 ms progress age. The router held this
+request during restoration. Private units/timers are inactive, the watchdog is
+active, and the canonical drop-in is unchanged. The synthetic fixture was archived
+after the private model stopped. No production namespace was moved or deleted.
+
+The interrupted first cold wave had not saved its benchmark summary. Its fixture
+and journals are preserved. The harness now saves initial/phase checkpoints and
+flushed health progress, and handles SIGTERM to retain partial receipts. A CPU-only
+interruption smoke passed; candidate serving sources are unchanged.
+
+A read-only canonical-root inventory at 19:54:55 found 53,641,060,553 logical bytes
+under the 53,687,091,200-byte root budget, leaving just **46,030,647 bytes (44 MiB)**
+for a new namespace at that moment. This makes effective cache capacity a separate
+deployment gate. Historical namespace `db87d6cf58243789` holds 24,134,296,538 bytes;
+it is a potential reversible archive candidate, subject to fresh owner/handle
+verification. No archive was performed. Preserve exact contents/permissions and
+paired configuration/cache rollback before any migration after owners stop.
+
 # Post-deployment failure: original production restored, work unfinished
 
 The first real request after the initial canaries stalled at18:19Z. Two
@@ -15,7 +46,7 @@ became ready18:28:35Z and a real214,978-token request streamed with fresh progre
 The stalled request lost its connection during rollback. The earlier idle cutover
 record below is historical evidence, not approval for continued use. Failed
 profile/namespace and both stack samples are preserved. The one-off follow-up is
-active again for15:50Eastern; the weekly read-only review is unchanged.
+active again for17:01Eastern; the weekly read-only review is unchanged.
 
 A new staged patch bounds eviction progress and refuses page/checkpoint writes
 before file creation, TP dispatch or reservation when no budget can be made.
