@@ -1,3 +1,32 @@
+## Latest GPU attempt: zero-budget phase passed; small-budget phase interrupted
+
+The23:03 private v5 pressure retry reverified original ownership and all candidate
+engine/service/native manifests before arming independent restoration. The candidate
+became ready23:05:56. The **zero-budget phase passed** all four known-answer contexts
+(8K/32K/98K/196K), cold and three warm waves, five four-way waves and cancellation,
+survivor and slot-reuse checks. Its565healthsamples had no errors, maximum178ms;
+1,321writes were refused with zero page/checkpoint writes or I/O errors. This is
+actual GPU evidence for the zero-budget condition of the unchanged v5 candidate.
+
+The512MiB phase restarted the private process and progressed with592page writes,
+one checkpoint write and309evictions; resident bytes536,172,336 remained below
+quota536,870,912. Its208healthsamples had zero errors and maximum32ms. Public
+traffic arrived23:15:10, so the harness interrupted the first cold wave and stopped
+the private units, preserving suite/phase/health receipts. **This phase did not
+complete and is not qualified.** Full combined gates have not run. The synthetic
+fixture was archived after the private owner stopped; no canonical cache namespace
+was moved or deleted, and the original drop-in stayed unchanged.
+
+A separate `v5_pressure_small` mode is prepared for a fresh bounded retry, preserving
+the completed zero-phase evidence. A CPU-only actual-suite routing smoke passed
+with mocked health/subprocess boundaries and21samples; it made no restart or fixture
+mutation. This harness change is not a serving-source change or GPU qualification.
+
+The23:05 canonical-root inventory left90,172,201bytes (~86MiB) for a new namespace.
+A reversible inactive historical namespace archive procedure is drafted but has
+not executed. Capacity and paired configuration/cache rollback remain deployment
+gates alongside the unfinished GPU matrix.
+
 ## Latest attempt: yielded to real traffic at 19:58 UTC
 
 A stable idle boundary allowed a bounded private v5 pressure window at 19:53.
