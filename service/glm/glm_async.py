@@ -93,7 +93,19 @@ def responsive_generator_class(base, cancellation_sentinel=None):
                 # step's lock or issuing native cleanup against failed workers.
                 self.jobs.pop(job.job, None)
                 return
-            async with self._step_lock:
+            # A cancellation may already be waiting when health latches a
+            # dead child. Bound only the lock wait so that it can observe that
+            # quarantine; never cancel or unlock an executor step still running.
+            while self.error is None:
+                try:
+                    await asyncio.wait_for(self._step_lock.acquire(), .25)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+            else:
+                self.jobs.pop(job.job, None)
+                return
+            try:
                 owner = getattr(self.generator, "_glm_native_concurrency", None)
                 if owner is None:
                     return await super().cancel(job)
@@ -125,6 +137,8 @@ def responsive_generator_class(base, cancellation_sentinel=None):
                     job.put_result(sentinel)
                 if interrupted:
                     raise asyncio.CancelledError
+            finally:
+                self._step_lock.release()
 
         async def close(self):
             try:

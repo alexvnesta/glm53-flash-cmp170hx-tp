@@ -93,7 +93,7 @@ class WorkerFailureContracts(unittest.IsolatedAsyncioTestCase):
 
             wrapper = paired_async_generator_class(concurrent_generator_class(
                 responsive_generator_class(Base, object()), object()))()
-            task = None
+            task = cancel_waiter = None
             try:
                 with patch.object(native, 'iterate', side_effect=blocked_step), \
                         patch.object(native, 'idle_work', side_effect=AssertionError('idle I/O after failure')):
@@ -103,6 +103,9 @@ class WorkerFailureContracts(unittest.IsolatedAsyncioTestCase):
                     wrapper.enqueue(pending)
                     await asyncio.sleep(0)
                     self.assertIn(pending, wrapper._enqueue_tasks)
+                    cancel_waiter = asyncio.create_task(wrapper.cancel(b))
+                    await asyncio.sleep(0)
+                    self.assertFalse(cancel_waiter.done())
                     tree = ast.parse((HERE.parents[1] / 'glm/glm_api.py').read_text())
                     names = {'ensure_engine_ready', 'health', 'models', 'complete'}
                     functions = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
@@ -126,6 +129,7 @@ class WorkerFailureContracts(unittest.IsolatedAsyncioTestCase):
                         for job in (a, b, pending):
                             self.assertEqual(job.results, [first])
                         self.assertEqual(wrapper.jobs, {})
+                        await asyncio.wait_for(cancel_waiter, .75)
                         await asyncio.wait_for(asyncio.gather(*(wrapper.cancel(job) for job in (a, b, pending))), .5)
                         self.assertTrue(wrapper._step_lock.locked(), 'cleanup must not unlock an in-flight step')
                         wrapper.enqueue(following)
@@ -142,6 +146,8 @@ class WorkerFailureContracts(unittest.IsolatedAsyncioTestCase):
                 release.set()
                 if task is not None:
                     await asyncio.gather(task, return_exceptions=True)
+                if cancel_waiter is not None:
+                    await asyncio.gather(cancel_waiter, return_exceptions=True)
                 wrapper._gpu_worker.shutdown(wait=True)
         self.assertFalse(torch.cuda.is_initialized())
 
