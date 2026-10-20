@@ -1,3 +1,16 @@
+## Latest retry: October20,04:25UTC, yielded before candidate readiness
+
+Public traffic arrived04:26:23 while the private candidate was loading; no GPUtest
+ran. OriginalPID2854650/router895282 was restored, ready04:28:22 and verifiedhealthy
+04:28:30 with original source/native/maps/drop-in and a283,580-token request admitted.
+Privateunits/timersinactive,watchdogactive; syntheticfixture archived afterownerstop.
+No production namespace move/delete, deployment or merge. Zero-budget evidence
+remains passed;512MiB/full/canonical gates pending. Repeated short idle gaps now
+require120continuousidle seconds and unchanged admissions before any timer/service/
+GPU mutation. ActualguardAST CPU stable/busy/newadmission controls passed; serving
+candidate is unchanged. One-off01:30EasternOct20;weeklyunchanged. Receipts:
+`v5_pressure_small-20261020T042549-2853556` in the qualification lab.
+
 ## Latest attempt: October20,03:21 UTC, yielded before candidate readiness
 
 The bounded small-only retry reverified live original identities and all candidate
