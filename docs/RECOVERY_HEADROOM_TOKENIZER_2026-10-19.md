@@ -1,3 +1,16 @@
+## Latest attempt: October20,03:21 UTC, yielded before candidate readiness
+
+The bounded small-only retry reverified live original identities and all candidate
+manifests at stable idle, then armed independent restoration. Public traffic arrived
+03:22:32 while the candidate was loading. It stopped the private model and began
+original restoration03:22:39. No GPU workload ran; no qualification gate changed.
+OriginalPID2797794/router895282 was ready03:24:36, independently verifiedhealthy
+03:25:06 with original source/native/drop-in; two281K-token requests completed
+normally. Privateunits/timersinactive,watchdogactive; fixture archived afterstop.
+No production namespace move/delete, deployment or merge. Zero phase remains passed;
+512MiB/full/canonical gates pending. One-off00:25EasternOct20; weekly unchanged.
+Receipts: `v5_pressure_small-20261020T032149-2796135` in the qualification lab.
+
 ## Latest GPU attempt: zero-budget phase passed; small-budget phase interrupted
 
 The23:03 private v5 pressure retry reverified original ownership and all candidate
