@@ -1,3 +1,19 @@
+## Latest attempt: October21,06:33UTC, first cold wave interrupted
+
+Candidate manifests matched and120continuous-idle guard passed. Current router
+PID3289002/profile-fa0adf1 source is byte-identical to prior switcher/controller;
+1500sreadiness verified. AuthproxyPID3288983 preserved. Private candidate ready
+06:38:14, but realtraffic arrived06:39:32, interrupting firstcoldwave.156healthsamples
+max156ms/noerrors;439pagewrites/onecheckpoint/442evictions andresident536172516<=
+536870912quota, noI/Oerrors. This is not a phase pass. OriginalPID3579076ready06:42:05,
+verifiedhealthy06:42:48 originalsource/native/maps/dropin while progressing a real
+288515-tokenrequest. Privateunits/timersinactive,watchdogactive; fixture archived
+afterstop. No productionnamespace migration/deployment/merge. Fullsuite now checkpoints
+initial/per-step interrupted receipts;CPU-only SIGTERMmocksmokepasses,servingcandidate
+unchanged. Zeroquota passed;small/full/canonical gatespending. Canonicalroot06:37
+inventory leaves308064786bytes(~294MiB) for newnamespace; migrationdraftnotexecuted.
+One-off03:44EasternOct21;weeklyunchanged. Receipts: `v5_pressure_small-20261021T063344-3564944`.
+
 ## Latest retry: October20,04:25UTC, yielded before candidate readiness
 
 Public traffic arrived04:26:23 while the private candidate was loading; no GPUtest
