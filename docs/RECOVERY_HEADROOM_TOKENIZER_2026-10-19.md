@@ -1,3 +1,15 @@
+## Availability gate added October21,06:47UTC
+
+The held288,515-token request was cancelled before output ~301s after routerarrival
+(147.19sbackendwall afterrestoration). Same-size retry completed100.78s/103tokens.
+Timing is consistent with a five-minute client total deadline; actualtimeout/cause
+unverified. Router1500s/authproxy3600s do not establishclientbudget. Pendingquestion
+asks Alex for traffic-free maintenancewindow/clienttimeoutidentity. Until compatible
+client/restoration+cold-prefill budget or explicitquietwindow is established, future
+followups are read-only: no productionstop/GPUtakeover even at120sidle. CPU/source
+work may continue. Originalhealthy;candidateundeployed;zeroGPUphasepassed andsmall/
+full/canonicalgatespending. Preserve cancellationnegativeevidence and weeklyreview.
+
 ## Latest attempt: October21,06:33UTC, first cold wave interrupted
 
 Candidate manifests matched and120continuous-idle guard passed. Current router
