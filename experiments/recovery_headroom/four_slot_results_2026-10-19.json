@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "native": "e4afb2ed95824640a16fb0a183b37a9322d3ab145786a4c0f4b94a5a2fbc2a7e",
+  "profile": "0820957d56c3b80384616a5f4995135aa55b1ded622c54e231a03831c541e0b3",
+  "full_receipt_sha256": "36b91a7d658be58498bcc533030da624db07bd96ab22ab28059686192d3da9f9",
+  "four_way_waves": 5,
+  "completed": {
+    "completed": 24,
+    "cancelled": 2
+  },
+  "lifecycle_passed": true,
+  "output_oracles": "Existing exact JSON and sandboxed compress_runs code validators; unchanged",
+  "cancellations": [
+    {
+      "outcome": "cancelled",
+      "prompt_tokens": 45
+    },
+    {
+      "outcome": "cancelled",
+      "prompt_tokens": 45
+    }
+  ]
+}

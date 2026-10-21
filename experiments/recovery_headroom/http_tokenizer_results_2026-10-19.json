@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "scope": "Actual /tokenize including HTTP, rendering and token/tensor construction; no GPU decode claim",
+  "fixture_sha256": "a69d237f50e37cd45040166bd8e7eaf9f68bcb0e9dc4d69f3bf0785310611bc5",
+  "repeats": 6,
+  "rows": [
+    {
+      "tokens": 8048,
+      "baseline_ms": 15.101711032912135,
+      "candidate_ms": 12.219101947266608,
+      "speedup": 1.2359100609918687,
+      "saved_ms": 2.8826090856455266
+    },
+    {
+      "tokens": 31694,
+      "baseline_ms": 57.125578983686864,
+      "candidate_ms": 17.91309501277283,
+      "speedup": 3.1890401375615887,
+      "saved_ms": 39.212483970914036
+    },
+    {
+      "tokens": 94695,
+      "baseline_ms": 195.9337995504029,
+      "candidate_ms": 43.67314948467538,
+      "speedup": 4.486367524722594,
+      "saved_ms": 152.26065006572753
+    },
+    {
+      "tokens": 194406,
+      "baseline_ms": 392.6207789336331,
+      "candidate_ms": 90.49902204424143,
+      "speedup": 4.338398029778666,
+      "saved_ms": 302.1217568893917
+    },
+    {
+      "tokens": 277099,
+      "baseline_ms": 544.8376450804062,
+      "candidate_ms": 127.68023903481662,
+      "speedup": 4.267204143719034,
+      "saved_ms": 417.1574060455896
+    }
+  ]
+}

@@ -47,7 +47,7 @@ class Lock(asyncio.Lock):
 async def run_case(api,label,expect_owned,header_failure,helper_dir):
     source=api.read_text();tree=ast.parse(source)
     selected=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))
-              and n.name in ('complete','stream_text')]
+              and n.name in ('complete','stream_text','ensure_engine_ready')]
     admission=load(helper_dir/'glm_admission.py',label+'_admission')
     tools=load(helper_dir/'glm_tools.py',label+'_tools')
     json_output=load(helper_dir/'glm_json_output.py',label+'_json_output')
@@ -84,6 +84,7 @@ async def run_case(api,label,expect_owned,header_failure,helper_dir):
                StreamingResponse=StreamingResponse,nullcontext=nullcontext,
                names_strict=tools.names_strict,UNADVERTISED_TOOL_CALLS="pass")
     scope['glm_json_output']=json_output
+    scope['glm_tp_runtime']=load(helper_dir/'glm_tp_runtime.py',label+'_tp_runtime')
     if helper:scope.update(OwnedJobCleanup=helper.OwnedJobCleanup,OwnedStreamingResponse=helper.OwnedStreamingResponse)
     for node in selected:node.decorator_list=[]
     exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),str(api),'exec'),scope)

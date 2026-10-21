@@ -1,0 +1,81 @@
+--- a/exllamav3/generator/disk_cache.py
++++ b/exllamav3/generator/disk_cache.py
+@@ -625,6 +625,14 @@
+             return False
+         tokens_bytes = tokens.contiguous().numpy().tobytes()
+         size = len(PAGE_MAGIC) + _HEADER.size + 256 + len(tokens_bytes) + self.image_size
++        # Reserve before creating a file or dispatching any rank copy. A root
++        # shared with protected fingerprints may leave this namespace no budget.
++        with self._lock:
++            if not self._make_room(size):
++                self.metrics["skipped_budget"] = self.metrics.get("skipped_budget", 0) + 1
++                return False
++            self.total_size += size
++            self.pending_pages.add(phash)
+         markers = None
+         if self.tp_groups:
+             # The ranks write straight into the file, so it has to exist before they are told; the dispatch
+@@ -634,16 +642,24 @@
+             try:
+                 data_offset = self._create_page_file(tmp, phash, prev_hash, tokens_bytes)
+             except OSError as e:
++                with self._lock:
++                    self.total_size -= size
++                    self.pending_pages.discard(phash)
+                 self._write_failed("page", None, e)
+                 return False
+             markers = []
+-            for model, cache_ids, devices in self.tp_groups:
+-                model.tp_dispatch_all(mp_disk_write, (slot, tmp, data_offset))
+-                markers += [f"{tmp}.d{dev}" for dev in devices]
++            try:
++                for model, cache_ids, devices in self.tp_groups:
++                    model.tp_dispatch_all(mp_disk_write, (slot, tmp, data_offset))
++                    markers += [f"{tmp}.d{dev}" for dev in devices]
++            except BaseException:
++                # A transport fault remains fatal to the generator. Undo only
++                # this reservation; do not contain an uncertain rank transfer.
++                with self._lock:
++                    self.total_size -= size
++                    self.pending_pages.discard(phash)
++                raise
+         with self._lock:
+-            self._make_room(size)
+-            self.total_size += size         # reserved; corrected to the file size once written
+-            self.pending_pages.add(phash)
+             self._enqueue(("page", phash, prev_hash, tokens_bytes, slot, events, size, markers))
+         return True
+ 
+@@ -717,7 +733,9 @@
+         top, sides = self._sides(stashed)
+         size = stashed["checkpoint_size"] + 4096
+         with self._lock:
+-            self._make_room(size)
++            if not self._make_room(size):
++                self.metrics["skipped_budget"] = self.metrics.get("skipped_budget", 0) + 1
++                return False
+             self.total_size += size
+             self.pending_states[phash] = stashed
+         try:
+@@ -1020,10 +1038,18 @@
+             self._cv.notify()
+ 
+ 
+-    def _make_room(self, nbytes: int):
+-        # Lock held by the caller: the writer thread inserts into the mirrors while this walks them
+-        while self.total_size + nbytes > self.max_size and (self.pages or self.states):
++    def _make_room(self, nbytes: int) -> bool:
++        # Lock held by the caller. Pending writes cannot be evicted, and a
++        # checkpoint rooted in another tier may have no disk eviction candidate.
++        # Refuse before I/O instead of spinning or exceeding the namespace share.
++        if nbytes > self.max_size:
++            return False
++        while self.total_size + nbytes > self.max_size:
++            before = self.total_size
+             self._evict_one()
++            if self.total_size >= before:
++                return False
++        return True
+ 
+ 
+     def _evict_one(self):

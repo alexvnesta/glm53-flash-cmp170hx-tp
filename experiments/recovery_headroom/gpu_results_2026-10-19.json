@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "native_sha256": "e4afb2ed95824640a16fb0a183b37a9322d3ab145786a4c0f4b94a5a2fbc2a7e",
+  "scope": "Small synthetic KDA graph/eager; no full-model fit claim",
+  "cases": 14,
+  "within_process_runs": 4,
+  "comparison": "bit exact output, conv state and recurrent state",
+  "guard_refusals": 14
+}

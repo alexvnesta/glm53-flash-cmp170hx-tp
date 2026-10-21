@@ -3,6 +3,43 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 
+def fail_generation(owner, error):
+    """Latch on the HTTP loop, without waiting for the GPU step or touching ranks."""
+    if owner.error is None:
+        owner.error = error
+    native = owner.generator
+    paired = getattr(native, '_glm_b2_retention', None)
+    if paired is not None:
+        from glm_b2_native import StopSharedGeneration
+        try:
+            paired._terminal(owner.error)
+        except StopSharedGeneration:
+            pass
+        if paired.shared is not None:
+            paired.shared.tickets.clear()
+    else:
+        disk = getattr(native, 'disk_page_cache', None)
+        if disk is not None:
+            disk.abort()
+    registered = list(owner.jobs.values())
+    for job in registered:
+        job.put_result(owner.error)
+    owner.jobs.clear()
+    try:
+        current = asyncio.current_task()
+    except RuntimeError:
+        current = None
+    registered_ids = {id(job) for job in registered}
+    for job, task in list(getattr(owner, '_enqueue_tasks', {}).items()):
+        # A register() caller already handles its own error and ticket cleanup.
+        if task is current:
+            continue
+        if id(job) not in registered_ids:
+            job.put_result(owner.error)
+        task.cancel()
+    return owner.error
+
+
 def responsive_generator_class(base, cancellation_sentinel=None):
     class ResponsiveAsyncGenerator(base):
         def __init__(self, *args, **kwargs):
@@ -16,9 +53,9 @@ def responsive_generator_class(base, cancellation_sentinel=None):
 
         async def _run_iteration(self):
             try:
-                while True:
+                while self.error is None:
                     async with self.condition:
-                        while not self.jobs:
+                        while not self.jobs and self.error is None:
                             if getattr(self.generator, 'has_idle_work', lambda: False)():
                                 try:
                                     await asyncio.wait_for(self.condition.wait(), timeout=0.25)
@@ -26,7 +63,11 @@ def responsive_generator_class(base, cancellation_sentinel=None):
                                     break
                             else:
                                 await self.condition.wait()
+                    if self.error is not None:
+                        return
                     async with self._step_lock:
+                        if self.error is not None:
+                            return
                         operation = self.generator.iterate if self.jobs else self.generator.idle_work
                         future = asyncio.get_running_loop().run_in_executor(
                             self._gpu_worker, operation)
@@ -37,24 +78,34 @@ def responsive_generator_class(base, cancellation_sentinel=None):
                             # step still reads the job/page table being cancelled.
                             await future
                             raise
-                        if results is not None:
+                        if results is not None and self.error is None:
                             self.deliver_results(results)
                     await asyncio.sleep(0)
             except asyncio.CancelledError:
                 return
             except Exception as error:
-                self.error = error
-                # Match upstream's failure policy: uncertain cache contents must
-                # never be persisted for another process, including idle-I/O faults.
-                disk = getattr(self.generator, "disk_page_cache", None)
-                if disk is not None:
-                    disk.abort()
-                for job in self.jobs.values():
-                    job.put_result(error)
-                self.jobs.clear()
+                fail_generation(self, error)
 
         async def cancel(self, job):
-            async with self._step_lock:
+            if self.error is not None:
+                # A dead rank can leave the executor inside a collective. Its
+                # consumers must release HTTP admission without acquiring that
+                # step's lock or issuing native cleanup against failed workers.
+                self.jobs.pop(job.job, None)
+                return
+            # A cancellation may already be waiting when health latches a
+            # dead child. Bound only the lock wait so that it can observe that
+            # quarantine; never cancel or unlock an executor step still running.
+            while self.error is None:
+                try:
+                    await asyncio.wait_for(self._step_lock.acquire(), .25)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+            else:
+                self.jobs.pop(job.job, None)
+                return
+            try:
                 owner = getattr(self.generator, "_glm_native_concurrency", None)
                 if owner is None:
                     return await super().cancel(job)
@@ -86,6 +137,8 @@ def responsive_generator_class(base, cancellation_sentinel=None):
                     job.put_result(sentinel)
                 if interrupted:
                     raise asyncio.CancelledError
+            finally:
+                self._step_lock.release()
 
         async def close(self):
             try:
